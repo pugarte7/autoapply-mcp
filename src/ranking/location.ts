@@ -345,8 +345,7 @@ function detectWorkplace(text: string, hints: LocationHints): WorkplaceType {
 }
 
 function classifyOne(raw: string, hints: LocationHints): LocationAnalysis {
-  // Accents are dropped first: normalizeForMatch turns "España" into "espa a".
-  const text = normalizeForMatch(raw.normalize("NFD").replace(/[̀-ͯ]/g, ""));
+  const text = normalizeForMatch(raw);
   const workplaceType = detectWorkplace(text, hints);
   const isRemote = workplaceType === "remote";
 

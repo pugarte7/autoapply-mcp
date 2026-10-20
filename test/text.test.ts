@@ -33,6 +33,7 @@ describe("htmlToText", () => {
 describe("normalizeForMatch and snippetAround", () => {
   it("lowercases and strips punctuation while keeping technical characters", () => {
     expect(normalizeForMatch("C#, .NET & Go!")).toBe("c# .net go");
+    expect(normalizeForMatch("España, A Coruña")).toBe("espana a coruna");
   });
 
   it("returns a snippet around a term", () => {

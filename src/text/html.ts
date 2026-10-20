@@ -62,9 +62,15 @@ export function normalizeWhitespace(input: string): string {
     .trim();
 }
 
-/** Lowercased, punctuation-collapsed text used for keyword matching. */
+/**
+ * Lowercased, punctuation-collapsed text used for keyword matching. Accents go
+ * first: kept, the letters that carry them fell to the punctuation rule and
+ * "España" read as "espa a", so "A Coruña" never met "A Coruna".
+ */
 export function normalizeForMatch(input: string): string {
   return input
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[^a-z0-9+#./'\s-]/g, " ")

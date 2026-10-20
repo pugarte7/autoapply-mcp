@@ -12,7 +12,7 @@ const COUNTRY_ALIASES: Record<string, string> = {
   "canada": "can", "ca": "can",
   "united states": "usa", "united states of america": "usa", "us": "usa", "u s a": "usa",
   "united kingdom": "gbr", "uk": "gbr", "gb": "gbr",
-  "spain": "esp", "es": "esp",
+  "spain": "esp", "espana": "esp", "es": "esp",
   "germany": "deu", "deutschland": "deu",
   "france": "fra",
   "italy": "ita", "italia": "ita",
