@@ -1,5 +1,5 @@
 import type { LocationClass } from "../domain/campaign.js";
-import type { WorkplaceType } from "../domain/job.js";
+import type { Job, WorkplaceType } from "../domain/job.js";
 import { normalizeForMatch } from "../text/html.js";
 
 /**
@@ -414,7 +414,7 @@ const CLASS_PRIORITY: Record<LocationClass, number> = {
  * match so a "Toronto / New York / Remote" listing is not discarded.
  */
 export function analyzeLocation(rawLocations: readonly string[], hints: LocationHints = {}): LocationAnalysis {
-  const candidates = rawLocations.filter((value) => typeof value === "string" && value.trim().length > 0);
+  const candidates = offices(rawLocations);
   if (candidates.length === 0) {
     const workplaceType = hints.workplaceType ?? (hints.isRemote ? "remote" : "unknown");
     return { locationClass: "unknown", country: "unknown", workplaceType, matched: "" };
@@ -471,9 +471,26 @@ export function refineRemoteScopeFromTitle(analysis: LocationAnalysis, title: st
   return analysis;
 }
 
+/**
+ * One entry per office. Boards also list several in one string, "San
+ * Francisco, CA; Madrid, Spain", which read whole was only ever San Francisco.
+ */
+function offices(rawLocations: readonly string[]): string[] {
+  return rawLocations
+    .flatMap((value) => (typeof value === "string" ? value.split(/\s*[;|]\s*/) : []))
+    .filter((value) => value.trim().length > 0);
+}
+
 export function allLocationClasses(rawLocations: readonly string[], hints: LocationHints = {}): LocationClass[] {
-  const classes = rawLocations
-    .filter((value) => value.trim().length > 0)
-    .map((value) => classifyOne(value, hints).locationClass);
-  return [...new Set(classes)];
+  return [...new Set(offices(rawLocations).map((value) => classifyOne(value, hints).locationClass))];
+}
+
+/**
+ * Every class a posting answers to: the one it is stored under, the strongest
+ * office ranked for North America, and each office it lists, since it is open
+ * in all of them. The gates and the queue filters both ask this, so a posting
+ * a campaign in Spain admits is also one a filter for Spain finds.
+ */
+export function jobLocationClasses(job: Pick<Job, "locationClass" | "locationsRaw" | "workplaceType">): LocationClass[] {
+  return [...new Set([job.locationClass, ...allLocationClasses(job.locationsRaw, { workplaceType: job.workplaceType })])];
 }
