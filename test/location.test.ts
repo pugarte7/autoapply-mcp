@@ -171,7 +171,7 @@ describe("analyzeLocation", () => {
 
   it.each(["Rotterdam, NL", "Amsterdam, NL"])(
     "does not mistake the country shorthand in %s for a Canadian province", (value) => {
-      expect(analyzeLocation([value])).toMatchObject({ locationClass: "europe", country: "unknown" });
+      expect(analyzeLocation([value])).toMatchObject({ locationClass: "europe", country: "NL" });
     },
   );
 
@@ -241,7 +241,9 @@ describe("Spain and Europe", () => {
     ["Hybrid - Madrid", "spain", "ES"],
     ["La Coruña, España", "spain", "ES"],
     ["Valencia, Spain", "spain", "ES"],
-    ["Paris, France", "europe", "unknown"],
+    ["Paris, France", "europe", "FR"],
+    ["Remote - Germany", "europe", "DE"],
+    ["London, UK", "europe", "GB"],
   ])("places %s", (value, locationClass, country) => {
     expect(analyzeLocation([value])).toMatchObject({ locationClass, country });
   });

@@ -289,18 +289,26 @@ const SPAIN_AMBIGUOUS = ["valencia", "cordoba", "granada", "santander", "salaman
 const EUROPE_REGION_SIGNALS = ["europe", "european union", "emea", "\\beu\\b"];
 
 /**
- * One country or city. "Remote - Germany" asks the candidate to live in
- * Germany, which is another European country for this purpose, not Europe-wide.
+ * One country or city, with the country it is in. "Remote - Germany" asks the
+ * candidate to live in Germany, which is another European country for this
+ * purpose, not Europe-wide.
  */
-const EUROPE_PLACES = [
-  "\\buk\\b", "united kingdom", "germany", "france", "portugal",
-  "italy", "netherlands", "ireland", "belgium", "switzerland", "austria", "poland", "sweden", "denmark", "norway",
-  "finland", "czechia", "czech republic", "romania", "greece", "hungary", "luxembourg", "estonia", "lithuania",
-  "latvia", "croatia", "bulgaria", "slovakia", "slovenia", "london", "paris", "berlin", "munich", "hamburg",
-  "frankfurt", "cologne", "lisbon", "porto", "amsterdam", "rotterdam", "dublin", "milan", "rome", "warsaw",
-  "krakow", "prague", "vienna", "zurich", "geneva", "stockholm", "copenhagen", "oslo", "helsinki", "brussels",
-  "bucharest", "athens", "budapest",
+const EUROPE_PLACES: ReadonlyArray<readonly [needle: string, country: string]> = [
+  ["\\buk\\b", "GB"], ["united kingdom", "GB"], ["germany", "DE"], ["france", "FR"], ["portugal", "PT"],
+  ["italy", "IT"], ["netherlands", "NL"], ["ireland", "IE"], ["belgium", "BE"], ["switzerland", "CH"],
+  ["austria", "AT"], ["poland", "PL"], ["sweden", "SE"], ["denmark", "DK"], ["norway", "NO"], ["finland", "FI"],
+  ["czechia", "CZ"], ["czech republic", "CZ"], ["romania", "RO"], ["greece", "GR"], ["hungary", "HU"],
+  ["luxembourg", "LU"], ["estonia", "EE"], ["lithuania", "LT"], ["latvia", "LV"], ["croatia", "HR"],
+  ["bulgaria", "BG"], ["slovakia", "SK"], ["slovenia", "SI"], ["london", "GB"], ["paris", "FR"], ["berlin", "DE"],
+  ["munich", "DE"], ["hamburg", "DE"], ["frankfurt", "DE"], ["cologne", "DE"], ["lisbon", "PT"], ["porto", "PT"],
+  ["amsterdam", "NL"], ["rotterdam", "NL"], ["dublin", "IE"], ["milan", "IT"], ["rome", "IT"], ["warsaw", "PL"],
+  ["krakow", "PL"], ["prague", "CZ"], ["vienna", "AT"], ["zurich", "CH"], ["geneva", "CH"], ["stockholm", "SE"],
+  ["copenhagen", "DK"], ["oslo", "NO"], ["helsinki", "FI"], ["brussels", "BE"], ["bucharest", "RO"],
+  ["athens", "GR"], ["budapest", "HU"],
 ];
+const EUROPE_PLACE_NEEDLES = EUROPE_PLACES.map(([needle]) => needle);
+/** Keyed as matchesAny reports a hit: the needle without its word boundaries. */
+const EUROPE_COUNTRY = new Map(EUROPE_PLACES.map(([needle, country]) => [needle.replace(/\\b/g, ""), country]));
 
 const REMOTE_SIGNALS = ["remote", "work from home", "work at home", "wfh", "distributed", "anywhere", "virtual"];
 const HYBRID_SIGNALS = ["hybrid", "flexible onsite", "in-office days"];
@@ -366,13 +374,14 @@ function classifyOne(raw: string, hints: LocationHints): LocationAnalysis {
   const hasSpainSignal = matchesAny(text, SPAIN_SIGNALS);
   const spainCityHit = matchesAny(text, SPAIN_UNAMBIGUOUS) ?? (hasSpainSignal ? matchesAny(text, SPAIN_AMBIGUOUS) : null);
   const europeRegionHit = matchesAny(text, EUROPE_REGION_SIGNALS);
-  const europePlaceHit = matchesAny(text, EUROPE_PLACES);
+  const europePlaceHit = matchesAny(text, EUROPE_PLACE_NEEDLES);
+  const europeCountry = europePlaceHit ? (EUROPE_COUNTRY.get(europePlaceHit) ?? "unknown") : "unknown";
 
   if (isRemote && !canadaCityHit && !bayHit && !spainCityHit) {
     if (hasCanadaSignal) return { locationClass: "remote-canada", country: "CA", workplaceType, matched: hasCanadaSignal };
     if (hasUsSignal) return { locationClass: "remote-us", country: "US", workplaceType, matched: hasUsSignal };
     if (hasSpainSignal) return { locationClass: "remote-spain", country: "ES", workplaceType, matched: hasSpainSignal };
-    if (europePlaceHit) return { locationClass: "europe", country: "unknown", workplaceType, matched: europePlaceHit };
+    if (europePlaceHit) return { locationClass: "europe", country: europeCountry, workplaceType, matched: europePlaceHit };
     if (europeRegionHit) return { locationClass: "remote-europe", country: "unknown", workplaceType, matched: europeRegionHit };
     return { locationClass: "remote-global", country: "unknown", workplaceType, matched: "remote" };
   }
@@ -388,8 +397,8 @@ function classifyOne(raw: string, hints: LocationHints): LocationAnalysis {
   if (spainCityHit) return { locationClass: "spain", country: "ES", workplaceType, matched: spainCityHit };
   if (hasUsSignal) return { locationClass: "us-other", country: "US", workplaceType, matched: hasUsSignal };
   if (hasSpainSignal) return { locationClass: "spain", country: "ES", workplaceType, matched: hasSpainSignal };
-  const europeHit = europePlaceHit ?? europeRegionHit;
-  if (europeHit) return { locationClass: "europe", country: "unknown", workplaceType, matched: europeHit };
+  if (europePlaceHit) return { locationClass: "europe", country: europeCountry, workplaceType, matched: europePlaceHit };
+  if (europeRegionHit) return { locationClass: "europe", country: "unknown", workplaceType, matched: europeRegionHit };
   if (text.length === 0) return { locationClass: "unknown", country: "unknown", workplaceType, matched: "" };
   return { locationClass: "other", country: "unknown", workplaceType, matched: text.slice(0, 40) };
 }
