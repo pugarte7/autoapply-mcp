@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { leverQuestionsToForm } from "../src/drafting/questions.js";
-import { fetchLeverApplyPage } from "../src/sources/lever.js";
+import { fetchLeverApplyPage, parseLeverApplyPage } from "../src/sources/lever.js";
 
 function card(id: string, template: Record<string, unknown>): string {
   const value = JSON.stringify({ id, ...template }).replace(/&/g, "&amp;").replace(/"/g, "&quot;");
@@ -43,7 +43,7 @@ afterEach(() => {
 
 describe("Lever application form", () => {
   it("reads the standard fields by input name and each custom card field by its own input name", () => {
-    const questions = leverQuestionsToForm(LODGIFY_PAGE);
+    const questions = leverQuestionsToForm(parseLeverApplyPage(LODGIFY_PAGE));
 
     expect(questions.map((question) => [question.key, question.type, question.required])).toEqual([
       ["resume", "input_file", false],
@@ -63,9 +63,23 @@ describe("Lever application form", () => {
   });
 
   it("borrows the card's title when a field does not say what it asks", () => {
-    const labels = leverQuestionsToForm(LODGIFY_PAGE).map((question) => question.label);
+    const labels = leverQuestionsToForm(parseLeverApplyPage(LODGIFY_PAGE)).map((question) => question.label);
     expect(labels).toContain("How did you hear about us? We're curious to know!");
     expect(labels).toContain("What is your level of English?");
+  });
+
+  it("reads attributes as attributes, not as parts of other ones", () => {
+    const form = parseLeverApplyPage(`
+      <input data-name="decoy" name="email" aria-required="false">
+      <input type='text' name='phone' aria-required="true">
+      <input class="required-field" name="org">
+      <textarea name="comments" required></textarea>`);
+    expect(form.inputs).toEqual([
+      { name: "email", required: false },
+      { name: "phone", required: true },
+      { name: "org", required: false },
+      { name: "comments", required: true },
+    ]);
   });
 
   it("fetches the apply page of a hosted Lever posting and nothing else", async () => {

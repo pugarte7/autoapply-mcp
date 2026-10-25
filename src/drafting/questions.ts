@@ -1,6 +1,6 @@
 import type { AshbyFormEntry } from "../sources/ashby.js";
 import type { GreenhouseQuestion } from "../sources/greenhouse.js";
-import { decodeEntitiesOnce } from "../text/html.js";
+import type { LeverApplyForm } from "../sources/lever.js";
 import type { FormQuestion } from "./answers.js";
 
 /** Converts ATS question payloads into the neutral FormQuestion shape. */
@@ -148,10 +148,6 @@ const LEVER_TYPES: Record<string, string> = {
   textarea: "textarea",
 };
 
-function attribute(tag: string, name: string): string | undefined {
-  return new RegExp(`\\b${name}="([^"]*)"`, "i").exec(tag)?.[1];
-}
-
 /**
  * A card's title says what a field asks when the field itself does not:
  * Lodgify's "How did you hear about us?" card holds one field reading "We're
@@ -163,43 +159,28 @@ function cardLabel(title: string, text: string): string {
 }
 
 /**
- * Reads a Lever apply page. Standard fields are found by their input names;
- * custom questions come from each card's `baseTemplate`, a hidden input whose
- * value is the card's JSON definition, keyed `cards[<card>][field<n>]` exactly
- * as the page names the inputs.
+ * Lever's apply form as questions. Standard fields are found by their input
+ * names; each card field is keyed `cards[<card>][field<n>]` exactly as the
+ * page names its input.
  */
-export function leverQuestionsToForm(page: string): FormQuestion[] {
-  const tags = page.match(/<(?:input|textarea)\b[^>]*>/gi) ?? [];
-  const byName = new Map(tags.map((tag) => [attribute(tag, "name") ?? "", tag]));
-
-  const standard: FormQuestion[] = LEVER_STANDARD_FIELDS.flatMap(([name, label, type]) => {
-    const tag = byName.get(name);
-    return tag ? [{ key: name, label, type, required: /\brequired\b/i.test(tag) }] : [];
-  });
-  const links: FormQuestion[] = [...byName.keys()].flatMap((name) => {
+export function leverQuestionsToForm(form: LeverApplyForm): FormQuestion[] {
+  const required = new Map(form.inputs.map((input) => [input.name, input.required]));
+  const standard: FormQuestion[] = LEVER_STANDARD_FIELDS.flatMap(([name, label, type]) =>
+    required.has(name) ? [{ key: name, label, type, required: required.get(name) === true }] : [],
+  );
+  const links: FormQuestion[] = [...required].flatMap(([name, isRequired]) => {
     const service = /^urls\[(.+)\]$/.exec(name)?.[1];
-    return service ? [{ key: name, label: service, type: "input_text", required: /\brequired\b/i.test(byName.get(name) ?? "") }] : [];
+    return service ? [{ key: name, label: service, type: "input_text", required: isRequired }] : [];
   });
-
-  const custom = tags.flatMap((tag) => {
-    const card = /^cards\[([^\]]+)\]\[baseTemplate\]$/.exec(attribute(tag, "name") ?? "")?.[1];
-    const value = attribute(tag, "value");
-    if (!card || !value) return [];
-    let template: { text?: unknown; fields?: unknown };
-    try {
-      template = JSON.parse(decodeEntitiesOnce(value)) as { text?: unknown; fields?: unknown };
-    } catch {
-      return [];
-    }
-    const title = String(template.text ?? "").trim().replace(/:$/, "");
-    return asRecordArray(template.fields).map((field, index) => ({
-      key: `cards[${card}][field${index}]`,
+  const custom = form.cards.flatMap(({ id, title, fields }) =>
+    fields.map((field, index) => ({
+      key: `cards[${id}][field${index}]`,
       label: cardLabel(title, String(field.text ?? "").trim()) || `Question ${index + 1}`,
       required: field.required === true,
       type: LEVER_TYPES[String(field.type)] ?? "input_text",
       options: asRecordArray(field.options).map((option) => String(option.text ?? "")).filter(Boolean),
-    }));
-  });
+    })),
+  );
   return [...standard, ...links, ...custom];
 }
 
