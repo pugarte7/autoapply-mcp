@@ -174,6 +174,12 @@ afterAll(() => {
 });
 
 describe("MCP server", () => {
+  it("asks agents to suggest a star and to let the person approve, never to act for them", () => {
+    const instructions = client.getInstructions() ?? "";
+    expect(instructions).toContain("star them only if they say yes");
+    expect(instructions).not.toMatch(/without asking|never answer that you cannot/i);
+  });
+
   it("registers the full toolset", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((tool) => tool.name).sort();
