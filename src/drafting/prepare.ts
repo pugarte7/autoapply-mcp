@@ -38,7 +38,7 @@ export type PreparedApplication = {
 };
 
 /** Boards that publish each posting's form before the browser opens. */
-const QUESTION_LOADERS: Partial<Record<string, (job: Job) => Promise<FormQuestion[]>>> = {
+const QUESTION_LOADERS: Partial<Record<Job["ats"], (job: Job) => Promise<FormQuestion[]>>> = {
   greenhouse: async (job) => {
     const detail = await fetchGreenhouseJobDetail(job.board, job.externalId);
     return greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
