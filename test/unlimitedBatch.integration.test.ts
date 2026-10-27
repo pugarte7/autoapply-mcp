@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { getWorkspace, resetWorkspaceCache } from "../src/config/load.js";
 import { saveApplication, countSubmittedSince } from "../src/db/repositories/applications.js";
@@ -57,7 +58,8 @@ beforeAll(async () => {
     compliance: [],
   }), { headers: { "content-type": "application/json" } })));
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  client = new Client({ name: "unlimited-batch-test", version: "1.0.0" });
+  client = new Client({ name: "unlimited-batch-test", version: "1.0.0" }, ASKS_PERSON);
+  person(client);
   await Promise.all([client.connect(clientTransport), createServer().connect(serverTransport)]);
 });
 

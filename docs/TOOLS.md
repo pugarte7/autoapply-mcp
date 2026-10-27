@@ -116,7 +116,7 @@ Renders the exact submission packet - every field, its value, and where the valu
 ## Approval and submission
 
 ### `approve_application`
-Records the human decision authorizing submission.
+Asks the person, not the model, to approve the exact packet, and records their answer. The client shows them the packet in its approval dialog (MCP elicitation). A client without one gets `person_approval_needed` and the command the person runs in their own terminal: `node dist/cli/approve.js <applicationId> <packetHash>`, which shows the packet and records an approval only on a typed "yes" and refuses to run without a terminal. A `"rejected"` decision needs no confirmation.
 
 | Input | Type | Notes |
 |---|---|---|
@@ -125,7 +125,7 @@ Records the human decision authorizing submission.
 | `decision` | `"approved" \| "rejected"` | Defaults to approved |
 | `note` | `string?` | |
 
-A mismatched hash fails with `packet_hash_mismatch`.
+A mismatched hash fails with `packet_hash_mismatch`, before the person is asked. If they say no, nothing is recorded and the result's `decision` is `"declined"`.
 
 ### `submit_application`
 Runs every guard, then acts according to mode.
@@ -179,7 +179,7 @@ Returns the batch id, ready versus needs-human counts, `blockingReasons` grouped
 Every application in the batch with company, role, compensation, readiness and what is blocking it, including each application's `outstanding` questions with their suggestions and guidance. Returns the current manifest hash and whether the stored one is stale.
 
 ### `approve_batch`
-Approves every ready application. Requires `batchId`, `manifestHash` and `expectedCount`; a mismatch in either fails with `manifest_mismatch` or `count_mismatch`.
+Asks the person to approve every ready application, listed by company and title, and records an approval for each on their yes. Requires `batchId`, `manifestHash` and `expectedCount`; a mismatch in either fails with `manifest_mismatch` or `count_mismatch` before anyone is asked. Without an approval dialog in the client, the person runs `node dist/cli/approve.js --batch <batchId> <manifestHash> <count>`.
 
 ### `submit_batch`
 Submits the approved set in `manual`, `assisted` or `auto` mode, re-running all

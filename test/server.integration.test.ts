@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { fixtureResumePath } from "./factories.js";
@@ -15,6 +16,7 @@ import { fixtureResumePath } from "./factories.js";
 
 let home: string;
 let client: Client;
+let personShown: string[] = [];
 
 const profile = {
   version: 1,
@@ -157,7 +159,8 @@ beforeAll(async () => {
   resetWorkspaceCache();
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  client = new Client({ name: "test-client", version: "1.0.0" });
+  client = new Client({ name: "test-client", version: "1.0.0" }, ASKS_PERSON);
+  personShown = person(client).shown;
   await Promise.all([client.connect(clientTransport), createServer().connect(serverTransport)]);
 });
 
@@ -275,6 +278,8 @@ describe("MCP server", () => {
 
     const approved = parse((await callTool("approve_application", { applicationId, packetHash })).text);
     expect(approved.status).toBe("approved");
+    // The person was shown the packet itself, not just asked for a yes.
+    expect(personShown.at(-1)).toContain(`Packet ${packetHash}`);
 
     // Auto mode is above the campaign's configured ceiling.
     const auto = await callTool("submit_application", { applicationId, mode: "auto" });

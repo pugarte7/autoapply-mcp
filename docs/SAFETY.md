@@ -22,6 +22,8 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 
 Approval binds to a SHA-256 hash of the exact packet: job, apply URL, resume, cover letter and every answer. Change one character and the previous approval no longer applies.
 
+The hash proves what was approved, not who approved it: the model reads it from `preview_application` and could hand it straight back. So `approve_application` and `approve_batch` ask the person themselves, through the client's approval dialog (MCP elicitation), and record nothing unless they say yes. A client with no such dialog is refused with a command for the person's own terminal, `dist/cli/approve.js`, which will not run without a terminal on both ends, so an agent's shell tool cannot answer for them.
+
 ## Truthfulness
 
 The answer policy engine can produce an answer from exactly four sources:

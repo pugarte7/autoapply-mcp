@@ -20,7 +20,7 @@ It is built for high-volume search **without** becoming a spam bot. Discovery, r
 
 1. **Nothing is invented.** Every drafted answer traces to a profile field or a pre-approved answer. Anything else is handed back to you.
 2. **Sensitive questions always stop.** Work authorization, citizenship, compensation, criminal history, demographics and legal attestations require a human decision by default.
-3. **Approval binds to content.** `approve_application` records a packet hash. Editing anything invalidates it and submission is refused.
+3. **Approval binds to content, and it is yours.** `approve_application` shows you the packet and records your answer with its hash; the model cannot give it for you. Editing anything invalidates it and submission is refused.
 4. **Job descriptions are untrusted data.** Text from employers is scanned for prompt-injection patterns, wrapped in an explicit data boundary, and never treated as instructions.
 5. **Anti-bot controls are respected.** A detected CAPTCHA aborts the run and hands the application back to you. There is no solving, evading or fingerprint spoofing.
 6. **Destinations are allowlisted.** Submissions only go to hosts the campaign explicitly trusts, over HTTPS.
@@ -170,7 +170,7 @@ explain_job        jobId       -> gate result and scoring evidence
 prepare_application jobId      -> match report, employer questions, drafted answers
 set_application_content        -> your cover letter and any answers only you can give
 preview_application            -> the exact packet plus its hash
-approve_application  + hash    -> your explicit authorization
+approve_application  + hash    -> asks you to approve that exact packet
 submit_application   mode      -> manual, assisted or auto
 record_outcome                 -> track what happened
 ```
@@ -180,7 +180,7 @@ High volume:
 ```
 prepare_batch  {tiers:["A","B"], locationClasses:["bay-area"], minCompensation:250000}
 preview_batch                  -> the set, plus grouped blocking questions
-approve_batch  + manifestHash + expectedCount
+approve_batch  + manifestHash + expectedCount   -> asks you to approve the set
 submit_batch   mode            -> honours configured limits and pacing
 list_batches                   -> progress
 ```

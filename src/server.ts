@@ -24,7 +24,7 @@ Single-application workflow:
   4. prepare_application  - build the match report, load employer questions, draft supported answers
   5. set_application_content - supply the cover letter and any answers a human must decide
   6. preview_application  - see the exact packet and its hash
-  7. approve_application  - authorize that exact packet hash
+  7. approve_application  - ask the person to approve that exact packet; they answer, not you
   8. submit_application   - submit under the campaign's submission mode
   9. record_outcome       - track responses
 
@@ -32,7 +32,7 @@ High-volume workflow:
   1. discover_jobs
   2. prepare_batch        - prepare many applications at once from a filter
   3. preview_batch        - review the set and the grouped blocking questions
-  4. approve_batch        - authorize the whole manifest in one decision
+  4. approve_batch        - ask the person to approve the whole manifest in one decision
   5. submit_batch         - submit the set, respecting configured limits and pacing
   6. list_batches         - track progress
 
