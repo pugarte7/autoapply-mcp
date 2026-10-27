@@ -65,6 +65,13 @@ export type FieldDescriptor = {
   value?: string;
   role?: string;
   /**
+   * What the control asks for, when its widget needs handling of its own.
+   * "city" is a geocoding picker (Greenhouse's "Location (City)"): it lists
+   * other towns whose names contain the typed one, so only the approved city
+   * itself may be chosen. Set by `withKinds` once the fields are read.
+   */
+  kind?: "city";
+  /**
    * For radios, the text of this single option. The `label` then carries the
    * question the whole group asks, so one approved answer selects one option.
    */
@@ -135,6 +142,15 @@ function containsPhrase(haystack: string, needle: string): boolean {
 function dwarfs(container: string, contained: string): boolean {
   const containerTokens = tokens(container).length;
   return containerTokens >= 6 && containerTokens >= 4 * Math.max(1, tokens(contained).length);
+}
+
+/** Marks the controls whose widgets the filler treats specially; see `FieldDescriptor.kind`. */
+export function withKinds(fields: readonly FieldDescriptor[]): FieldDescriptor[] {
+  return fields.map((field) =>
+    field.role === "combobox" && (field.domId === "candidate-location" || /\(city\)/i.test(field.label))
+      ? { ...field, kind: "city" as const }
+      : field,
+  );
 }
 
 /** The words that open a question without saying what it asks. */
