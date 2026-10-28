@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AppError } from "../util/errors.js";
-import { normalizeForMatch } from "../text/html.js";
+import { sameLocation } from "./place.js";
 
 type LocationDriver = {
   search(query: string): Promise<void>;
@@ -15,92 +15,6 @@ const locationSchema = z.object({ name: z.string() });
 
 function retainedLocationError(): AppError {
   return new AppError("location_not_verified", "Lever did not retain the selected current location");
-}
-
-const COUNTRY_ALIASES: Record<string, string> = {
-  "canada": "can", "can": "can", "ca": "can",
-  "united states": "usa", "united states of america": "usa", "usa": "usa", "us": "usa", "u s a": "usa",
-  "united kingdom": "gbr", "uk": "gbr", "gbr": "gbr", "gb": "gbr",
-  // Lever renders countries as ISO 3166-1 alpha-3 ("Madrid, ESP", "Berlin,
-  // DEU"), while a profile states the country's name ("Madrid, Madrid,
-  // Spain"). Without these aliases the one correct suggestion was rejected as
-  // a different place and the required location stayed blank - US Mobile's
-  // form left "Madrid, Madrid, Spain" empty with "Madrid, ESP" on screen.
-  "spain": "esp", "esp": "esp", "es": "esp",
-  "germany": "deu", "deutschland": "deu", "deu": "deu",
-  "france": "fra", "fra": "fra",
-  "italy": "ita", "italia": "ita", "ita": "ita",
-  "portugal": "prt", "prt": "prt",
-  "netherlands": "nld", "holland": "nld", "nld": "nld",
-  "ireland": "irl", "irl": "irl",
-  "poland": "pol", "pol": "pol",
-  "romania": "rou", "rou": "rou",
-  "bulgaria": "bgr", "bgr": "bgr",
-  "hungary": "hun", "hun": "hun",
-  "ukraine": "ukr", "ukr": "ukr",
-  "greece": "grc", "grc": "grc",
-  "croatia": "hrv", "hrv": "hrv",
-  "serbia": "srb", "srb": "srb",
-  "slovakia": "svk", "svk": "svk",
-  "slovenia": "svn", "svn": "svn",
-  "czechia": "cze", "czech republic": "cze", "cze": "cze",
-  "sweden": "swe", "swe": "swe",
-  "norway": "nor", "nor": "nor",
-  "denmark": "dnk", "dnk": "dnk",
-  "finland": "fin", "fin": "fin",
-  "austria": "aut", "aut": "aut",
-  "switzerland": "che", "che": "che",
-  "belgium": "bel", "bel": "bel",
-  "lithuania": "ltu", "ltu": "ltu",
-  "latvia": "lva", "lva": "lva",
-  "estonia": "est", "est": "est",
-};
-
-function canonicalCountry(part: string): string {
-  const normalized = normalizeForMatch(part);
-  return COUNTRY_ALIASES[normalized] ?? normalized;
-}
-
-/**
- * Lever renders its own canonical location strings - "Vancouver, BC, CAN" -
- * while a profile records the same place as "Vancouver, British Columbia,
- * Canada". Byte equality therefore rejects the one correct suggestion in the
- * native list and the required field is left blank. Regions are compared by
- * acronym or prefix so "BC" and "British Columbia" agree, which is a
- * difference of notation rather than of place.
- */
-function sameRegion(actual: string, approved: string): boolean {
-  const left = normalizeForMatch(actual);
-  const right = normalizeForMatch(approved);
-  if (!left || !right) return !left && !right;
-  if (left === right) return true;
-  const acronym = (value: string) => value.split(" ").filter(Boolean).map((word) => word[0]).join("");
-  if (acronym(left) === right || acronym(right) === left) return true;
-  const [shorter, longer] = left.length <= right.length ? [left, right] : [right, left];
-  return shorter.length >= 2 && longer.startsWith(shorter);
-}
-
-function splitLocation(value: string): { city: string; region: string; country: string } {
-  const parts = value.split(",").map((part) => part.trim()).filter(Boolean);
-  const city = normalizeForMatch(parts[0] ?? "");
-  if (parts.length <= 1) return { city, region: "", country: "" };
-  const country = canonicalCountry(parts[parts.length - 1] ?? "");
-  return { city, region: parts.slice(1, -1).join(" "), country };
-}
-
-/**
- * Both sides must name the same city and the same country, so "Vancouver, WA,
- * USA" is still rejected for an approved "Vancouver, British Columbia,
- * Canada". A region is only compared when both strings state one.
- */
-function sameLocation(actual: string, approved: string): boolean {
-  if (normalizeForMatch(actual) === normalizeForMatch(approved)) return true;
-  const left = splitLocation(actual);
-  const right = splitLocation(approved);
-  if (!left.city || left.city !== right.city) return false;
-  if (!left.country || !right.country || left.country !== right.country) return false;
-  if (!left.region || !right.region) return true;
-  return sameRegion(left.region, right.region);
 }
 
 async function verifySelection(ui: LocationDriver, approved: string): Promise<void> {

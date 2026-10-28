@@ -949,14 +949,6 @@ describe("pickOptionIndex", () => {
   it("reports no match when nothing is close", () => {
     expect(pickOptionIndex(["Alpha", "Beta"], ["Gamma"])).toBe(-1);
   });
-
-  it("on equal coverage prefers the option opening with the answer's own place", () => {
-    // Both options cover every word of the answer; the shorter one is a town
-    // that merely contains the city's name.
-    expect(
-      pickOptionIndex(["Humanes de Madrid, Madrid, Spain", "Madrid, Community of Madrid, Spain"], ["Madrid, Madrid, Spain"]),
-    ).toBe(1);
-  });
 });
 
 describe("optionTextMatches", () => {

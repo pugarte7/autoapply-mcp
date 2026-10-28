@@ -137,6 +137,29 @@ function dwarfs(container: string, contained: string): boolean {
   return containerTokens >= 6 && containerTokens >= 4 * Math.max(1, tokens(contained).length);
 }
 
+/** The words that open a question without saying what it asks. */
+const QUESTION_SCAFFOLD = new Set([
+  "about", "any", "are", "can", "could", "did", "does", "doing", "for", "from",
+  "give", "has", "have", "how", "let", "may", "might", "must", "our", "out",
+  "please", "shall", "share", "should", "tell", "that", "the", "their", "them",
+  "they", "this", "was", "were", "what", "when", "where", "which", "who",
+  "whom", "whose", "why", "will", "with", "would", "you", "your", "yours",
+  "yourself", "current", "currently",
+]);
+
+/**
+ * Whether two labels that each name a subject share no word but scaffolding.
+ * Sony's form paired "What is your current salary?" with the notice-period
+ * answer on "what your current" - three of five words, exactly the bar - and
+ * wrote "15 days" into the salary box. Containment is decided before this is
+ * asked, and a contained phrase shares every subject word with its container.
+ */
+function sharesOnlyScaffolding(left: ReadonlySet<string>, right: readonly string[]): boolean {
+  const subject = right.filter((token) => !QUESTION_SCAFFOLD.has(token));
+  if (subject.length === 0 || [...left].every((token) => QUESTION_SCAFFOLD.has(token))) return false;
+  return !subject.some((token) => left.has(token));
+}
+
 /**
  * Scores how alike a field label and an answer label are, in that order. The
  * order matters for containment: a long field label holding a short answer
@@ -154,6 +177,7 @@ function similarity(a: string, b: string): number {
   const leftTokens = new Set(tokens(left));
   const rightTokens = tokens(right);
   if (leftTokens.size === 0 || rightTokens.length === 0) return 0;
+  if (sharesOnlyScaffolding(leftTokens, rightTokens)) return 0;
   const overlap = rightTokens.filter((token) => leftTokens.has(token)).length;
   return overlap / Math.max(leftTokens.size, rightTokens.length);
 }
@@ -815,41 +839,6 @@ function hasAnswerText(answer: DraftAnswer): number {
   return answer.answer.trim().length > 0 ? 1 : 0;
 }
 
-/**
- * Question scaffolding - "What is your current ...?" opens dozens of unrelated
- * questions - is not a subject. Sony's Greenhouse form paired "What is your
- * current salary?" with the notice-period answer on the shared words "what is
- * your current", and the runner wrote "15 days" into the salary box. A label
- * pair whose only shared words are scaffolding is not a match; the field-name
- * and semantic paths in the matcher still pair fields whose labels differ by
- * design, and containment of a full phrase is unaffected because a contained
- * phrase shares every content token with its container.
- */
-const QUESTION_SCAFFOLD = new Set([
-  "about", "any", "are", "can", "could", "did", "does", "doing", "for", "from",
-  "give", "has", "have", "how", "let", "may", "might", "must", "our", "out",
-  "please", "shall", "share", "should", "tell", "that", "the", "their", "them",
-  "they", "this", "was", "were", "what", "when", "where", "which", "who",
-  "whom", "whose", "why", "will", "with", "would", "you", "your", "yours",
-  "yourself", "current", "currently",
-]);
-
-function contentTokens(value: string): string[] {
-  return tokens(value).filter((token) => !QUESTION_SCAFFOLD.has(token));
-}
-
-/**
- * True when two labels share no content word at all - every overlapping token
- * is question scaffolding. A label that is itself all scaffolding cannot be
- * judged this way and is left to the other paths.
- */
-function scaffoldOnlyOverlap(a: string, b: string): boolean {
-  const left = contentTokens(a);
-  const right = new Set(contentTokens(b));
-  if (left.length === 0 || right.size === 0) return false;
-  return !left.some((token) => right.has(token));
-}
-
 /** Pairs each detected form field with the best matching drafted answer. */
 export function matchFields(fields: readonly FieldDescriptor[], answers: readonly DraftAnswer[]): FieldMatch[] {
   return fields.map((original) => {
@@ -863,7 +852,7 @@ export function matchFields(fields: readonly FieldDescriptor[], answers: readonl
       .map((answer) => ({
         answer,
         confidence: Math.max(
-          scaffoldOnlyOverlap(field.label, answer.label) ? 0 : similarity(field.label, answer.label),
+          similarity(field.label, answer.label),
           similarity(field.name, answer.questionKey),
           semanticSimilarity(field, answer),
         ),
@@ -1700,7 +1689,6 @@ function leastQualifiedMatch(optionTexts: readonly string[], candidate: string):
   const wanted = answerContentWords(candidate);
   let best = -1;
   let bestCoverage = -1;
-  let bestLeads = Number.POSITIVE_INFINITY;
   let bestLength = Number.POSITIVE_INFINITY;
   for (let index = 0; index < optionTexts.length; index += 1) {
     const text = optionTexts[index] ?? "";
@@ -1712,19 +1700,9 @@ function leastQualifiedMatch(optionTexts: readonly string[], candidate: string):
     const words = new Set(normalized.split(" "));
     const coverage = wanted.filter((word) => words.has(word)).length;
     const length = normalized.length;
-    // A location candidate names the place itself first ("Madrid, Madrid,
-    // Spain"), so a full-coverage option that starts with a different word is
-    // a different place that merely contains the name ("Humanes de Madrid,
-    // Madrid, Spain"). On equal coverage the candidate's lead word wins.
-    const leads = wanted.length > 0 && normalized.split(" ")[0] === wanted[0] ? 0 : 1;
-    if (
-      coverage > bestCoverage ||
-      (coverage === bestCoverage && leads < bestLeads) ||
-      (coverage === bestCoverage && leads === bestLeads && length < bestLength)
-    ) {
+    if (coverage > bestCoverage || (coverage === bestCoverage && length < bestLength)) {
       best = index;
       bestCoverage = coverage;
-      bestLeads = leads;
       bestLength = length;
     }
   }
@@ -1804,7 +1782,6 @@ function bestCoverageMatch(optionTexts: readonly string[], candidate: string): n
   if (wanted.length < MIN_OVERLAP_WORDS) return -1;
   let best = -1;
   let bestCoverage = MIN_OVERLAP_WORDS - 1;
-  let bestLeads = Number.POSITIVE_INFINITY;
   let bestLength = Number.POSITIVE_INFINITY;
   for (let index = 0; index < optionTexts.length; index += 1) {
     const text = optionTexts[index] ?? "";
@@ -1818,18 +1795,9 @@ function bestCoverageMatch(optionTexts: readonly string[], candidate: string): n
     // The tie rule below would otherwise accept an option sharing a single
     // word: "Company Careers Page" chose "Company Recruiter" on "company".
     if (coverage < MIN_OVERLAP_WORDS) continue;
-    // Same lead-word rule as leastQualifiedMatch: on equal coverage the option
-    // starting with the candidate's own first word is the named place itself,
-    // not another place containing it ("Humanes de Madrid" vs "Madrid").
-    const leads = normalized.split(" ")[0] === wanted[0] ? 0 : 1;
-    if (
-      coverage > bestCoverage ||
-      (coverage === bestCoverage && leads < bestLeads) ||
-      (coverage === bestCoverage && leads === bestLeads && normalized.length < bestLength)
-    ) {
+    if (coverage > bestCoverage || (coverage === bestCoverage && normalized.length < bestLength)) {
       best = index;
       bestCoverage = coverage;
-      bestLeads = leads;
       bestLength = normalized.length;
     }
   }

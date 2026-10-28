@@ -10,20 +10,21 @@ import { attachResume } from "../src/submission/browser.js";
  * only initializes when its "Attach" control is clicked. Setting files on the
  * input directly ran the change handler against an uninitialized component:
  * the page logged "Cannot read properties of undefined (reading 'uploadFile')"
- * and no resume was held, while the upload reported success.
+ * and no resume was held, while the upload reported success. The markup is
+ * GitLab's live board, reduced to the two upload sections.
  */
-const GREENHOUSE_FORM = `
-<div class="file-upload">
-  <label>Resume/CV</label>
-  <button type="button" onclick="window.widget = {}; document.getElementById('resume').click()">Attach</button>
-  <input type="file" id="resume" style="display:none"
-    onchange="if (window.widget) document.getElementById('held').textContent = this.files[0].name">
-  <span id="held"></span>
-</div>
-<div class="file-upload">
-  <label>Cover Letter</label>
-  <button type="button">Attach</button>
+const uploadSection = (id: string, title: string) => `
+<div role="group" aria-labelledby="upload-label-${id}" class="file-upload">
+  <div id="upload-label-${id}" class="label upload-label">${title}</div>
+  <div class="file-upload__wrapper"><div class="button-container"><div class="secondary-button"><div>
+    <button type="button" class="btn btn--pill" onclick="window.widget_${id} = {}; document.getElementById('${id}').click()">Attach</button>
+    <label class="visually-hidden" for="${id}">Attach</label>
+    <input id="${id}" class="visually-hidden" type="file" accept=".pdf,.doc,.docx,.txt,.rtf"
+      onchange="if (window.widget_${id}) document.getElementById('${id}-held').textContent = this.files[0].name"/>
+  </div></div></div></div>
+  <span id="${id}-held"></span>
 </div>`;
+const GREENHOUSE_FORM = uploadSection("resume", "Resume/CV") + uploadSection("cover_letter", "Cover Letter");
 
 describe("attachResume on Greenhouse's React upload widget", () => {
   let browser: Browser;
@@ -48,7 +49,8 @@ describe("attachResume on Greenhouse's React upload widget", () => {
     const attached = await attachResume(page as unknown as Parameters<typeof attachResume>[0], resumePath);
 
     expect(attached).toBe(true);
-    expect(await page.locator("#held").textContent()).toBe("alex-kim-resume.pdf");
+    expect(await page.locator("#resume-held").textContent()).toBe("alex-kim-resume.pdf");
+    expect(await page.locator("#cover_letter-held").textContent()).toBe("");
     await page.close();
   });
 });
