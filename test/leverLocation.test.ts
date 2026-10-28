@@ -120,6 +120,18 @@ describe("Lever canonical location notation", () => {
     expect(ui.pick).not.toHaveBeenCalled();
   });
 
+  // US Mobile's form left "Madrid, Madrid, Spain" blank with "Madrid, ESP" on
+  // screen: Lever writes European countries as ISO 3166-1 alpha-3 too.
+  it("accepts a European country written as its ISO code", async () => {
+    const spain = "Madrid, Madrid, Spain";
+    const ui = {
+      ...notationDriver(["Madrid, DEU", "Madrid, ESP"]),
+      selection: vi.fn().mockResolvedValue({ display: "Madrid, ESP", encoded: JSON.stringify({ name: "Madrid, ESP" }) }),
+    };
+    await fillLeverLocation(ui, [spain, "Madrid"]);
+    expect(ui.pick).toHaveBeenCalledWith(1);
+  });
+
   it("refuses a bare city with no country to compare", async () => {
     const ui = notationDriver(["Vancouver"]);
     await expect(fillLeverLocation(ui, [canada, "Vancouver"])).rejects.toThrow(/approved current location/i);

@@ -111,6 +111,7 @@ type AnyPage = {
   // Optional so the test doubles do not have to model the event emitter.
   on?: (event: string, handler: (payload: never) => void) => void;
   off?: (event: string, handler: (payload: never) => void) => void;
+  waitForEvent?: (event: string, options?: unknown) => Promise<{ setFiles: (files: string) => Promise<void> }>;
 };
 type AnyLocator = {
   first: () => AnyLocator;
@@ -1799,7 +1800,11 @@ async function fillControl(
     return;
   }
   if (field.role === "combobox") {
-    await fillCombobox(page, locator, candidates);
+    const isLocationPicker =
+      field.domId === "candidate-location" ||
+      /^location$/i.test(field.name ?? "") ||
+      /\(city\)/i.test(field.label ?? "");
+    await fillCombobox(page, locator, candidates, isLocationPicker);
     return;
   }
   if (field.type === "select") {
@@ -2024,6 +2029,7 @@ export async function fillCombobox(
   page: AnyPage,
   locator: AnyLocator,
   candidates: readonly string[],
+  strictLeadWord = false,
 ): Promise<void> {
   try {
     // A decline is asked of a short demographic list, which the unfiltered
@@ -2042,13 +2048,23 @@ export async function fillCombobox(
       }
       if (optionTexts.length > 0) throw new Error(`no visible option matched ${JSON.stringify(candidates)}`);
     }
+    // Location pickers query a geocoder that returns places CONTAINING the
+    // typed name: "Madrid, Madrid, Spain" offered only "Las Rozas de Madrid"
+    // and "Humanes de Madrid", and containment picked a different town. Every
+    // candidate names the place itself first, so an option opening with
+    // another word is another place and never reaches the matcher, on the
+    // shorter searches ("Madrid", which lists "Madrid, Spain") and on the
+    // empty one, which would otherwise take whatever the geocoder suggests.
+    const place = strictLeadWord ? leadWord(candidates.find((candidate) => candidate.trim()) ?? "") : "";
     for (const candidate of [...candidates, ""]) {
       await closeFlyout(page);
       await openFlyout(locator);
       await locator.fill(candidate);
       const selector = await optionSelectorFor(page, locator);
       const optionTexts = await waitForVisibleOptions(page, OPTION_WAIT_MS, selector);
-      const index = pickOptionIndex(optionTexts, candidates);
+      const eligible = optionTexts.flatMap((text, index) => (!place || leadWord(text) === place ? [index] : []));
+      const picked = pickOptionIndex(eligible.map((index) => optionTexts[index] ?? ""), candidates);
+      const index = picked >= 0 ? (eligible[picked] ?? -1) : -1;
       if (index >= 0) {
         await page.locator(selector).nth(index).click();
         return;
@@ -2058,6 +2074,11 @@ export async function fillCombobox(
   } finally {
     await closeFlyout(page);
   }
+}
+
+/** The first word of a place, compared whole: "Madrid" is not "Madridejos". */
+function leadWord(value: string): string {
+  return value.trim().toLowerCase().split(/[\s,]+/)[0] ?? "";
 }
 
 const VISIBLE_OPTION = '[role="option"]:visible';
@@ -2173,10 +2194,38 @@ async function dedupeResumeAttachments(page: AnyPage): Promise<void> {
   }
 }
 
-async function attachResume(page: AnyPage, resumePath: string): Promise<boolean> {
+export async function attachResume(page: AnyPage, resumePath: string): Promise<boolean> {
   const check = validateResumeFile(resumePath);
   if (!check.ok) {
     throw new AppError("resume_unusable", check.reason, { path: resumePath });
+  }
+  // Greenhouse's current job board manages its file inputs through a React
+  // widget: setting files directly on the first input fires its change handler
+  // against an uninitialized component and the page reports "Cannot read
+  // properties of undefined (reading 'uploadFile')" - no file is held. The
+  // visible "Attach" control drives the same code path as a human click, so it
+  // is tried first. The Resume section's Attach is the first one on the form;
+  // the cover letter's comes after it.
+  if (page.waitForEvent) {
+    const attachButton = page
+      .locator('button:has-text("Attach"), [role="button"]:has-text("Attach")')
+      .first();
+    if ((await attachButton.count()) > 0) {
+      try {
+        // Awaited together: a click that throws would otherwise leave the
+        // chooser wait to reject unhandled 8s later and take the process down.
+        const [chooser] = await Promise.all([
+          page.waitForEvent("filechooser", { timeout: 8000 }),
+          attachButton.click({ timeout: 5000 }),
+        ]);
+        await chooser.setFiles(resumePath);
+        await page.waitForTimeout(1500);
+        if (await resumeIsAttached(page, resumePath)) return true;
+      } catch {
+        // No chooser appeared or the widget rejected the file; fall through to
+        // the direct input path below.
+      }
+    }
   }
   const fileInput = page.locator('input[type="file"]').first();
   if ((await fileInput.count()) === 0) {

@@ -86,6 +86,16 @@ describe("matchFields", () => {
     expect(matches.map((match) => match.answer)).toEqual([null, null, null]);
   });
 
+  it("will not pair two questions that share only their scaffolding", () => {
+    // Sony's form paired "What is your current salary?" with the notice-period
+    // answer on "what is your current" and wrote "15 days" into the salary box.
+    const matches = matchFields(
+      [field("What is your current salary?")],
+      [answer("What is your current notice period?", "15 days")],
+    );
+    expect(matches[0]?.answer).toBeNull();
+  });
+
   it("still matches an answer label contained as whole words", () => {
     const matches = matchFields([field("Your Full Name")], [answer("Full Name", "Alex Kim")]);
     expect(matches[0]?.answer?.answer).toBe("Alex Kim");
@@ -938,6 +948,14 @@ describe("pickOptionIndex", () => {
 
   it("reports no match when nothing is close", () => {
     expect(pickOptionIndex(["Alpha", "Beta"], ["Gamma"])).toBe(-1);
+  });
+
+  it("on equal coverage prefers the option opening with the answer's own place", () => {
+    // Both options cover every word of the answer; the shorter one is a town
+    // that merely contains the city's name.
+    expect(
+      pickOptionIndex(["Humanes de Madrid, Madrid, Spain", "Madrid, Community of Madrid, Spain"], ["Madrid, Madrid, Spain"]),
+    ).toBe(1);
   });
 });
 

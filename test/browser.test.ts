@@ -670,6 +670,29 @@ describe("fillCombobox", () => {
     expect(fake.events).toContain("click-option:I don't wish to answer");
   });
 
+  // Greenhouse's location picker geocodes the typed text and lists places that
+  // contain it, so "Madrid, Madrid, Spain" matched "Humanes de Madrid, Madrid,
+  // Spain" by containment and filled a different town.
+  it("takes only a location option that names the place first", async () => {
+    const fake = fakeCombobox({
+      "Madrid, Madrid, Spain": ["Las Rozas de Madrid, Madrid, Spain", "Humanes de Madrid, Madrid, Spain"],
+      Madrid: ["Humanes de Madrid, Madrid, Spain", "Madrid, Spain"],
+    });
+    await fillCombobox(fake.page, fake.locator, ["Madrid, Madrid, Spain", "Madrid"], true);
+    expect(fake.events.filter((event) => event.startsWith("click-option:"))).toEqual(["click-option:Madrid, Spain"]);
+  });
+
+  it("leaves a location blank rather than pick another place containing its name", async () => {
+    const fake = fakeCombobox({
+      "Madrid, Madrid, Spain": ["Humanes de Madrid, Madrid, Spain", "Madridejos, Toledo, Spain"],
+      "": ["Humanes de Madrid, Madrid, Spain"],
+    });
+    await expect(fillCombobox(fake.page, fake.locator, ["Madrid, Madrid, Spain"], true)).rejects.toThrow(
+      /no visible option/,
+    );
+    expect(fake.events.some((event) => event.startsWith("click-option:"))).toBe(false);
+  });
+
   // Greenhouse keeps the phone field's country picker rendered, so a page-wide
   // option query read "Afghanistan+93" for every dropdown on Chime and Navan.
   it("reads and clicks options only in the listbox the combobox controls", async () => {
