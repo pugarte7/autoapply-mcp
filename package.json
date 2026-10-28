@@ -33,13 +33,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:evals": "tsc -p evals/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
     "start": "node dist/index.js",
     "doctor": "node dist/cli/doctor.js",
     "init": "node dist/cli/init.js",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run build && npm test",
+    "eval": "npm run build && node evals/run.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
