@@ -173,6 +173,16 @@ describe("analyzeLocation", () => {
     },
   );
 
+  it.each(["On-Site - Madrid", "On-site, Barcelona", "On Site - Lisbon"])(
+    "does not mistake the workplace in %s for Ontario", (value) => {
+      expect(analyzeLocation([value])).toMatchObject({ locationClass: "other", country: "unknown" });
+    },
+  );
+
+  it.each(["Toronto, ON", "Ottawa, ON, Canada", "On-site - Waterloo, ON"])("still reads Ontario in %s", (value) => {
+    expect(analyzeLocation([value]).locationClass).toBe("canada");
+  });
+
   it("requires Canadian context for ambiguous NL while preserving Newfoundland locations", () => {
     for (const value of ["St. John's, NL", "Newfoundland and Labrador, Canada", "Corner Brook, NL, Canada"]) {
       expect(analyzeLocation([value]).locationClass, value).toBe("canada");

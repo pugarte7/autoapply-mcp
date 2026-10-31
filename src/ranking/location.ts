@@ -193,6 +193,8 @@ const CANADA_AMBIGUOUS = [
 ];
 
 // NL can mean the Netherlands; use Canadian city/province names or other context.
+// ON is Ontario only when "site" does not follow: Cabify's "On-Site - Madrid"
+// was classed as Canada and rejected.
 const CANADA_SIGNALS = [
   "canada",
   "canadian",
@@ -211,7 +213,7 @@ const CANADA_SIGNALS = [
   "yukon",
   "nunavut",
   "northwest territories",
-  "\\bon\\b",
+  "\\bon\\b(?![\\s-]*site)",
   "\\bqc\\b",
   "\\bbc\\b",
   "\\bab\\b",
