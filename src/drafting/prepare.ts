@@ -5,6 +5,7 @@ import type { Db } from "../db/database.js";
 import { getApplicationByJob, listApplicationsOnBoard, saveApplication } from "../db/repositories/applications.js";
 import { fetchAshbyApplicationForm } from "../sources/ashby.js";
 import { fetchGreenhouseJobDetail } from "../sources/greenhouse.js";
+import { fetchLeverApplyPage } from "../sources/lever.js";
 import { computePacketHash } from "../submission/packet.js";
 import { validateResumeFile, type ResumeCheck } from "../submission/resume.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
@@ -13,7 +14,7 @@ import { logger } from "../util/logger.js";
 import { draftAnswers, type FormQuestion } from "./answers.js";
 import { carryEmployerAnswers } from "./employerAnswers.js";
 import { buildMatchReport, selectResume, type MatchReport } from "./matchReport.js";
-import { ashbyQuestionsToForm, defaultQuestionSet, greenhouseQuestionsToForm } from "./questions.js";
+import { ashbyQuestionsToForm, defaultQuestionSet, greenhouseQuestionsToForm, leverQuestionsToForm } from "./questions.js";
 
 /**
  * Shared application preparation.
@@ -37,25 +38,23 @@ export type PreparedApplication = {
 };
 
 /** Boards that publish each posting's form before the browser opens. */
-const QUESTION_LOADERS: Partial<Record<string, (board: string, externalId: string) => Promise<FormQuestion[]>>> = {
-  greenhouse: async (board, externalId) => {
-    const detail = await fetchGreenhouseJobDetail(board, externalId);
+const QUESTION_LOADERS: Partial<Record<string, (job: Job) => Promise<FormQuestion[]>>> = {
+  greenhouse: async (job) => {
+    const detail = await fetchGreenhouseJobDetail(job.board, job.externalId);
     return greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
   },
-  ashby: async (board, externalId) => ashbyQuestionsToForm(await fetchAshbyApplicationForm(board, externalId)),
+  ashby: async (job) => ashbyQuestionsToForm(await fetchAshbyApplicationForm(job.board, job.externalId)),
+  lever: async (job) => leverQuestionsToForm(await fetchLeverApplyPage(job.applyUrl)),
 };
 
-async function loadQuestions(
-  ats: string,
-  board: string,
-  externalId: string,
-): Promise<{ questions: FormQuestion[]; source: string }> {
+async function loadQuestions(job: Job): Promise<{ questions: FormQuestion[]; source: string }> {
+  const { ats } = job;
   const load = QUESTION_LOADERS[ats];
   if (!load) {
     return { questions: defaultQuestionSet(), source: "baseline (board does not publish a question schema)" };
   }
   try {
-    const questions = await load(board, externalId);
+    const questions = await load(job);
     return questions.length > 0
       ? { questions, source: `${ats} job board API` }
       : { questions: defaultQuestionSet(), source: "baseline (empty question set returned)" };
@@ -82,7 +81,7 @@ export async function prepareApplicationFor(
   const resume = selectResume(profile, evaluation.trackId, options.resumeId);
   const resumeCheck = validateResumeFile(resume.path);
 
-  const { questions, source } = await loadQuestions(job.ats, job.board, job.externalId);
+  const { questions, source } = await loadQuestions(job);
 
   // Narrative templates are filled from this specific posting, using only the
   // topics the profile genuinely supports.

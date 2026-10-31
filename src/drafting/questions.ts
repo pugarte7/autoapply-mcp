@@ -1,5 +1,6 @@
 import type { AshbyFormEntry } from "../sources/ashby.js";
 import type { GreenhouseQuestion } from "../sources/greenhouse.js";
+import { decodeEntitiesOnce } from "../text/html.js";
 import type { FormQuestion } from "./answers.js";
 
 /** Converts ATS question payloads into the neutral FormQuestion shape. */
@@ -127,6 +128,79 @@ export function ashbyQuestionsToForm(entries: readonly AshbyFormEntry[]): FormQu
       options: ashbyType === "Boolean" && choices.length === 0 ? ["Yes", "No"] : choices,
     }];
   });
+}
+
+/** The fields every Lever form names the same way, labelled as the page shows them. */
+const LEVER_STANDARD_FIELDS: ReadonlyArray<readonly [name: string, label: string, type: string]> = [
+  ["resume", "Resume/CV", "input_file"],
+  ["name", "Full name", "input_text"],
+  ["email", "Email", "input_text"],
+  ["phone", "Phone", "input_text"],
+  ["location", "Current location", "input_text"],
+  ["org", "Current company", "input_text"],
+  ["comments", "Additional information", "textarea"],
+];
+
+const LEVER_TYPES: Record<string, string> = {
+  "multiple-choice": "multi_value_single_select",
+  dropdown: "multi_value_single_select",
+  "multiple-select": "multi_value_multi_select",
+  textarea: "textarea",
+};
+
+function attribute(tag: string, name: string): string | undefined {
+  return new RegExp(`\\b${name}="([^"]*)"`, "i").exec(tag)?.[1];
+}
+
+/**
+ * A card's title says what a field asks when the field itself does not:
+ * Lodgify's "How did you hear about us?" card holds one field reading "We're
+ * curious to know!", which no source question would ever match.
+ */
+function cardLabel(title: string, text: string): string {
+  if (!title || text.includes("?")) return text;
+  return /[?.!]$/.test(title) ? `${title} ${text}` : `${title}: ${text}`;
+}
+
+/**
+ * Reads a Lever apply page. Standard fields are found by their input names;
+ * custom questions come from each card's `baseTemplate`, a hidden input whose
+ * value is the card's JSON definition, keyed `cards[<card>][field<n>]` exactly
+ * as the page names the inputs.
+ */
+export function leverQuestionsToForm(page: string): FormQuestion[] {
+  const tags = page.match(/<(?:input|textarea)\b[^>]*>/gi) ?? [];
+  const byName = new Map(tags.map((tag) => [attribute(tag, "name") ?? "", tag]));
+
+  const standard: FormQuestion[] = LEVER_STANDARD_FIELDS.flatMap(([name, label, type]) => {
+    const tag = byName.get(name);
+    return tag ? [{ key: name, label, type, required: /\brequired\b/i.test(tag) }] : [];
+  });
+  const links: FormQuestion[] = [...byName.keys()].flatMap((name) => {
+    const service = /^urls\[(.+)\]$/.exec(name)?.[1];
+    return service ? [{ key: name, label: service, type: "input_text", required: /\brequired\b/i.test(byName.get(name) ?? "") }] : [];
+  });
+
+  const custom = tags.flatMap((tag) => {
+    const card = /^cards\[([^\]]+)\]\[baseTemplate\]$/.exec(attribute(tag, "name") ?? "")?.[1];
+    const value = attribute(tag, "value");
+    if (!card || !value) return [];
+    let template: { text?: unknown; fields?: unknown };
+    try {
+      template = JSON.parse(decodeEntitiesOnce(value)) as { text?: unknown; fields?: unknown };
+    } catch {
+      return [];
+    }
+    const title = String(template.text ?? "").trim().replace(/:$/, "");
+    return asRecordArray(template.fields).map((field, index) => ({
+      key: `cards[${card}][field${index}]`,
+      label: cardLabel(title, String(field.text ?? "").trim()) || `Question ${index + 1}`,
+      required: field.required === true,
+      type: LEVER_TYPES[String(field.type)] ?? "input_text",
+      options: asRecordArray(field.options).map((option) => String(option.text ?? "")).filter(Boolean),
+    }));
+  });
+  return [...standard, ...links, ...custom];
 }
 
 /**
