@@ -102,3 +102,33 @@ export const ashbyAdapter: SourceAdapter = {
     return [`${BASE}/${encodeURIComponent(slug)}`];
   },
 };
+
+const FORM_ENDPOINT = "https://jobs.ashbyhq.com/api/non-user-graphql?op=ApiJobPosting";
+const FORM_QUERY = `query ApiJobPosting($organizationHostedJobsPageName: String!, $jobPostingId: String!) {
+  jobPosting(organizationHostedJobsPageName: $organizationHostedJobsPageName, jobPostingId: $jobPostingId) {
+    applicationForm { sections { fieldEntries { ... on FormFieldEntry { field isRequired } } } }
+  }
+}`;
+
+export type AshbyFormEntry = { field?: { path?: unknown; title?: unknown; type?: unknown; selectableValues?: unknown }; isRequired?: unknown };
+
+/**
+ * The application form of one posting, as Ashby's own hosted job page loads
+ * it: every field with its type, required flag and choices. The listing API
+ * publishes none of this, so without it only a baseline of contact fields was
+ * known before the browser opened, and Qonto's required questions surfaced
+ * only as blanks on the filled form.
+ */
+export async function fetchAshbyApplicationForm(board: string, jobPostingId: string): Promise<AshbyFormEntry[]> {
+  const payload = await fetchJson<{
+    data?: { jobPosting?: { applicationForm?: { sections?: Array<{ fieldEntries?: AshbyFormEntry[] }> } } | null };
+  }>(FORM_ENDPOINT, {
+    body: {
+      operationName: "ApiJobPosting",
+      variables: { organizationHostedJobsPageName: board, jobPostingId },
+      query: FORM_QUERY,
+    },
+  });
+  const sections = payload.data?.jobPosting?.applicationForm?.sections ?? [];
+  return sections.flatMap((section) => section.fieldEntries ?? []).filter((entry) => entry.field);
+}

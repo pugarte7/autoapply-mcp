@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LocationClassSchema } from "../domain/campaign.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getWorkspace } from "../config/load.js";
 import {
@@ -52,7 +53,7 @@ const FilterShape = {
   tiers: z.array(z.enum(["A", "B", "C"])).optional().describe("Quality tiers to include. Defaults to A and B."),
   trackIds: z.array(z.string()).optional().describe("Campaign track ids to include."),
   locationClasses: z
-    .array(z.enum(["bay-area", "us-other", "canada", "remote-us", "remote-canada", "remote-global", "other", "unknown"]))
+    .array(LocationClassSchema)
     .optional(),
   companies: z.array(z.string()).optional(),
   minScore: z.number().optional(),

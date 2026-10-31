@@ -193,7 +193,7 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 - Compensation parsed from description text is a heuristic. Postings that list several geographic pay zones can yield the wrong figure, so those results carry a `compensation-parsed-from-text` flag. Structured ATS pay data is preferred whenever a board publishes it.
 - FX rates in `campaign.json` are static. Update them before relying on a cross-currency floor.
-- Only Greenhouse publishes an application question schema. For Lever and Ashby the server drafts against a baseline field set and reads the real form during an assisted run.
+- Each posting's questions are read before the browser opens: Greenhouse from its job board API, Ashby from the endpoint its hosted job page uses, and Lever from the question definitions embedded in its apply page. Other boards are drafted against a baseline field set and the real form is read during an assisted run.
 - `@modelcontextprotocol/sdk` currently pulls a transitive advisory in `@hono/node-server` affecting its static-file server. This server uses the stdio transport only and never serves static files, so the affected code path is not reachable.
 
 ## Development

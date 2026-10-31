@@ -3,7 +3,9 @@ import type { Application, Evaluation, Job } from "../domain/job.js";
 import type { Profile } from "../domain/profile.js";
 import type { Db } from "../db/database.js";
 import { getApplicationByJob, listApplicationsOnBoard, saveApplication } from "../db/repositories/applications.js";
+import { fetchAshbyApplicationForm } from "../sources/ashby.js";
 import { fetchGreenhouseJobDetail } from "../sources/greenhouse.js";
+import { fetchLeverApplyPage } from "../sources/lever.js";
 import { computePacketHash } from "../submission/packet.js";
 import { validateResumeFile, type ResumeCheck } from "../submission/resume.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
@@ -12,7 +14,7 @@ import { logger } from "../util/logger.js";
 import { draftAnswers, type FormQuestion } from "./answers.js";
 import { carryEmployerAnswers } from "./employerAnswers.js";
 import { buildMatchReport, selectResume, type MatchReport } from "./matchReport.js";
-import { defaultQuestionSet, greenhouseQuestionsToForm } from "./questions.js";
+import { ashbyQuestionsToForm, defaultQuestionSet, greenhouseQuestionsToForm, leverQuestionsToForm } from "./questions.js";
 
 /**
  * Shared application preparation.
@@ -26,26 +28,38 @@ export type PreparedApplication = {
   report: MatchReport;
   resumeCheck: ResumeCheck;
   questionSource: string;
-  outstanding: Array<{ key: string; label: string; category: string; suggested: string; guidance: string }>;
+  /**
+   * `options` are the choices the board offers. Without them whoever answers
+   * writes free text: "Yes" for Cabify's "Daily / Occasionally / Rarely / Not
+   * yet" left a required dropdown empty at fill time.
+   */
+  outstanding: Array<{ key: string; label: string; category: string; suggested: string; guidance: string; options: string[] }>;
   autoFilled: Array<{ key: string; label: string; answer: string; citation: string }>;
 };
 
-async function loadQuestions(
-  ats: string,
-  board: string,
-  externalId: string,
-): Promise<{ questions: FormQuestion[]; source: string }> {
-  if (ats !== "greenhouse") {
+/** Boards that publish each posting's form before the browser opens. */
+const QUESTION_LOADERS: Partial<Record<string, (job: Job) => Promise<FormQuestion[]>>> = {
+  greenhouse: async (job) => {
+    const detail = await fetchGreenhouseJobDetail(job.board, job.externalId);
+    return greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
+  },
+  ashby: async (job) => ashbyQuestionsToForm(await fetchAshbyApplicationForm(job.board, job.externalId)),
+  lever: async (job) => leverQuestionsToForm(await fetchLeverApplyPage(job.applyUrl)),
+};
+
+async function loadQuestions(job: Job): Promise<{ questions: FormQuestion[]; source: string }> {
+  const { ats } = job;
+  const load = QUESTION_LOADERS[ats];
+  if (!load) {
     return { questions: defaultQuestionSet(), source: "baseline (board does not publish a question schema)" };
   }
   try {
-    const detail = await fetchGreenhouseJobDetail(board, externalId);
-    const questions = greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
+    const questions = await load(job);
     return questions.length > 0
-      ? { questions, source: "greenhouse job board API" }
+      ? { questions, source: `${ats} job board API` }
       : { questions: defaultQuestionSet(), source: "baseline (empty question set returned)" };
   } catch (error) {
-    logger.warn("greenhouse question fetch failed", { error: toErrorMessage(error) });
+    logger.warn(`${ats} question fetch failed`, { error: toErrorMessage(error) });
     return { questions: defaultQuestionSet(), source: `baseline (question fetch failed: ${toErrorMessage(error)})` };
   }
 }
@@ -67,7 +81,7 @@ export async function prepareApplicationFor(
   const resume = selectResume(profile, evaluation.trackId, options.resumeId);
   const resumeCheck = validateResumeFile(resume.path);
 
-  const { questions, source } = await loadQuestions(job.ats, job.board, job.externalId);
+  const { questions, source } = await loadQuestions(job);
 
   // Narrative templates are filled from this specific posting, using only the
   // topics the profile genuinely supports.
@@ -119,6 +133,7 @@ export async function prepareApplicationFor(
 
   saveApplication(db, application);
 
+  const optionsByKey = new Map(questions.map((question) => [question.key, question.options ?? []]));
   return {
     application,
     report,
@@ -132,6 +147,7 @@ export async function prepareApplicationFor(
         category: answer.category,
         suggested: answer.answer,
         guidance: answer.guidance,
+        options: optionsByKey.get(answer.questionKey) ?? [],
       })),
     autoFilled: answers
       .filter((answer) => !answer.requiresHuman)

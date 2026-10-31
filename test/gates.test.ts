@@ -52,8 +52,15 @@ describe("evaluateGates", () => {
   });
 
   it("rejects disallowed location classes", () => {
-    const result = evaluateGates(makeJob({ locationClass: "remote-us", country: "US" }), context);
+    const result = evaluateGates(makeJob({ locationsRaw: ["Remote - US"], locationClass: "remote-us", country: "US" }), context);
     expect(result.rule).toBe("location-not-allowed");
+  });
+
+  it("admits a posting when any office it lists is allowed", () => {
+    const spain = { ...context, campaign: makeCampaign({ locations: { ...campaign.locations, allow: ["spain"] } }) };
+    const job = makeJob({ locationsRaw: ["San Francisco, CA", "Madrid, Spain"], locationClass: "bay-area" });
+    expect(evaluateGates(job, spain).rule).not.toBe("location-not-allowed");
+    expect(evaluateGates(makeJob({ locationsRaw: ["San Francisco, CA"] }), spain).rule).toBe("location-not-allowed");
   });
 
   it("rejects roles requiring a security clearance", () => {

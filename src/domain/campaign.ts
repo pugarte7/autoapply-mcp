@@ -15,6 +15,10 @@ export const LocationClassSchema = z.enum([
   "remote-us",
   "remote-canada",
   "remote-global",
+  "spain",
+  "remote-spain",
+  "europe",
+  "remote-europe",
   "other",
   "unknown",
 ]);

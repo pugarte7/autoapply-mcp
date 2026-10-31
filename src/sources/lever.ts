@@ -1,6 +1,7 @@
 import type { Company } from "../domain/campaign.js";
 import type { CompensationRange, Job, WorkplaceType } from "../domain/job.js";
-import { fetchJson } from "./http.js";
+import { AppError } from "../util/errors.js";
+import { fetchJson, fetchText } from "./http.js";
 import { asString, epochToIso, normalizeJob } from "./normalize.js";
 import { leverDescription, type LeverDescription } from "./leverDescription.js";
 import type { SourceAdapter } from "./types.js";
@@ -112,3 +113,17 @@ export const leverAdapter: SourceAdapter = {
     ];
   },
 };
+
+/**
+ * One posting's hosted apply page. Lever's postings API publishes no
+ * questions, but the page carries each custom question card's definition as
+ * JSON, so the form can be drafted before the browser opens.
+ */
+export async function fetchLeverApplyPage(applyUrl: string): Promise<string> {
+  const url = new URL(applyUrl);
+  if (!/^jobs(?:\.eu)?\.lever\.co$/i.test(url.hostname)) {
+    throw new AppError("unsupported_host", `not a Lever hosted posting: ${url.hostname}`);
+  }
+  if (!url.pathname.endsWith("/apply")) url.pathname = `${url.pathname.replace(/\/$/, "")}/apply`;
+  return fetchText(url.toString());
+}

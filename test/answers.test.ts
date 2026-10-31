@@ -33,6 +33,8 @@ describe("classifyQuestion", () => {
   });
 
   it("recognizes ordinary contact fields", () => {
+    expect(classifyQuestion("Name")).toBe("contact");
+    expect(classifyQuestion("Company name")).not.toBe("contact");
     expect(classifyQuestion("First Name")).toBe("contact");
     expect(classifyQuestion("Email")).toBe("contact");
     expect(classifyQuestion("LinkedIn Profile")).toBe("contact");
@@ -1207,5 +1209,12 @@ describe("drafted values must fit the question asked", () => {
     expect(answers[0]?.answer).toBe("");
     expect(answers[0]?.requiresHuman).toBe(true);
     expect(blockingQuestions).toEqual([label]);
+  });
+});
+
+describe("a field labelled only Name", () => {
+  it("takes the full name, as Ashby's system name field asks", () => {
+    const [answer] = draftAnswers([question("Name", { key: "_systemfield_name", required: true })], profile, campaign).answers;
+    expect(answer).toMatchObject({ answer: "Alex Candidate", source: "profile", requiresHuman: false });
   });
 });

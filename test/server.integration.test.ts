@@ -237,6 +237,8 @@ describe("MCP server", () => {
 
     const needsHuman = prepared.questionsNeedingHuman as Array<Record<string, string>>;
     expect(needsHuman.map((entry) => entry.key)).toContain("sponsorship");
+    // The choices travel with the question, so whoever answers names one of them.
+    expect(needsHuman.find((entry) => entry.key === "sponsorship")?.options).toEqual(["No", "Yes"]);
 
     const autoFilled = prepared.autoFilledAnswers as Array<Record<string, string>>;
     expect(autoFilled.find((entry) => entry.key === "email")?.answer).toBe("alex@example.com");
