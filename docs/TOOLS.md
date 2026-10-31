@@ -136,10 +136,19 @@ Runs every guard, then acts according to mode.
 | `mode` | `"manual" \| "assisted" \| "auto"` | Cannot exceed the campaign's configured mode |
 | `headless` | `boolean?` | Ignored in assisted mode |
 | `keepOpenSeconds` | `number?` | Assisted mode: how long to leave the filled form open (at most 1800) |
+| `verificationCode` | `string?` | The one-time code the board emailed after a previous attempt hit its gate; each attempt emails a new one |
+| `waitForCodeSeconds` | `number?` | Hold the browser at a verification gate for this long (at most 1800) while the code is read from `<artifacts>/<applicationId>.code` or the configured mailbox; also bounds the wait for Workday's account-verification link |
 
 - `manual` returns the packet and apply URL for you to submit.
 - `assisted` fills the hosted form in a visible browser, screenshots it, and leaves it open for you to review and submit. If your submission reaches the board's confirmation page during the hold, the run returns at once and records it as submitted with that page as evidence; otherwise it returns `prepared` and you call `record_submission` yourself.
 - `auto` fills and clicks submit. Requires campaign mode `auto`, an allowlisted company, every required field fillable, and no unresolved questions.
+
+Greenhouse and Workday gate submission behind an emailed code or link that only
+lives as long as the attempt that requested it. Link a mailbox before the first
+submission (`AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD`, see
+[CONFIGURATION.md](CONFIGURATION.md#verification-codes-environment-only)) and pass
+`waitForCodeSeconds`; without it the run stops at the gate and a person writes the
+code to `<artifacts>/<applicationId>.code` while it waits.
 
 SmartRecruiters, Workable and Recruitee are discovery-only integrations.
 `assisted` and `auto` fail with `ats_browser_not_supported`; manual packets remain

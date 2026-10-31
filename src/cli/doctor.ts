@@ -8,6 +8,7 @@ import { ProfileSchema } from "../domain/profile.js";
 import { adapterFor } from "../sources/registry.js";
 import { probeJson } from "../sources/http.js";
 import { validateResumeFile } from "../submission/resume.js";
+import { readVerificationInboxConfig } from "../submission/verificationInbox.js";
 import { toErrorMessage } from "../util/errors.js";
 
 /**
@@ -107,6 +108,15 @@ async function main(): Promise<void> {
     console.log("");
     for (const stray of strays) console.log(`WARN  ${stray}`);
   }
+
+  // Not a failing check: the file hand-off still works without a mailbox, but a
+  // gated submission then waits on a person, so say so before the first run.
+  const inbox = readVerificationInboxConfig();
+  console.log(
+    inbox
+      ? `\nPASS  verification inbox - ${inbox.user} on ${inbox.host}:${inbox.port}, folders ${inbox.mailboxes.join(", ")}`
+      : "\nWARN  verification inbox - not configured; set AUTOAPPLY_OTP_IMAP_USER and AUTOAPPLY_OTP_IMAP_PASSWORD so Greenhouse codes and Workday links are read for you (docs/CONFIGURATION.md, \"Verification codes\")",
+  );
 
   if (companies && companies.length > 0 && process.argv.includes("--probe")) {
     console.log("\nProbing configured boards...\n");
