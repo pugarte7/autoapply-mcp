@@ -8,7 +8,7 @@ import { countSubmittedSince, listApplications } from "../db/repositories/applic
 import { evaluateAndStore, mergeSummaries, type PipelineSummary } from "../pipeline.js";
 import { discoverJobs, resolveBoards, verifyBoard } from "../sources/registry.js";
 import { scanHiringThread } from "../sources/hackernews.js";
-import { AtsKindSchema, CompanySchema, type AtsKind } from "../domain/campaign.js";
+import { AtsKindSchema, CompanySchema, LocationClassSchema, type AtsKind } from "../domain/campaign.js";
 import { startOfDayIso } from "../submission/guards.js";
 import { prepareUntrusted, wrapUntrusted } from "../text/untrusted.js";
 import { AppError } from "../util/errors.js";
@@ -276,7 +276,7 @@ export function registerDiscoveryTools(server: McpServer): void {
         trackId: z.string().optional(),
         trackIds: z.array(z.string()).optional(),
         locationClasses: z
-          .array(z.enum(["bay-area", "us-other", "canada", "remote-us", "remote-canada", "remote-global", "other", "unknown"]))
+          .array(LocationClassSchema)
           .optional(),
         companies: z.array(z.string()).optional(),
         minCompensation: z.number().optional().describe("Minimum annualized top-of-range pay in the campaign currency."),
