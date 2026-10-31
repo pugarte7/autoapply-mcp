@@ -127,6 +127,19 @@ A fresh install cannot contact an employer: `submission.mode` is `manual`, and `
 | `AUTOAPPLY_MIN_INTERVAL_MS` | `700` | Minimum delay between requests to one host |
 | `AUTOAPPLY_MAX_RESPONSE_MB` | `64` | Response size ceiling |
 | `AUTOAPPLY_FOORILLA_API_KEY` | unset | Optional API key for an existing Foorilla PRO+ subscription; never stored in campaign files |
+| `AUTOAPPLY_OTP_IMAP_USER` | unset | Mailbox that receives forwarded verification mail; switches on reading Greenhouse codes and Workday links |
+| `AUTOAPPLY_OTP_IMAP_PASSWORD` | unset | App password for that mailbox; never stored in campaign files |
+| `AUTOAPPLY_ATS_PASSWORD` | unset | Password for the Workday candidate accounts the server registers |
+
+### Link a mailbox for verification codes
+
+Greenhouse emails a one-time code before it accepts a submission and Workday emails a link before a new candidate account can sign in. Both are bound to the attempt that requested them, so a run has to read them while the browser holds the gate open. Do this before your first submission:
+
+1. Make a filter on your real address that forwards `from:(greenhouse OR workday.com OR myworkday.com)` to a mailbox that receives nothing else.
+2. Create an app password for that mailbox and set `AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD` in the MCP client's `env`.
+3. Pass `waitForCodeSeconds` to `submit_application`.
+
+`doctor` reports whether the mailbox is configured. Without it a gated submission stops and you write the code to `<artifacts>/<applicationId>.code` while the run waits. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
 
 ## Register with an MCP client
 
@@ -143,6 +156,8 @@ A fresh install cannot contact an employer: `submission.mode` is `manual`, and `
 ```
 
 The server speaks stdio. All logs go to stderr, so stdout stays clean for the protocol. `AUTOAPPLY_HOME` can be omitted if you use the default `~/.autoapply`.
+
+For salaries in Spain, connect the `tech-pay-spain` server too: Streamable HTTP at `https://spanishtoptechcompanies.com/mcp`, no sign-in. Its [skill](https://github.com/pugarte7/spanish-top-tech-companies/tree/website/skills/tech-pay-spain) tells agents to apply through this server.
 
 ## Typical session
 
