@@ -3,6 +3,7 @@ import type { Application, Evaluation, Job } from "../domain/job.js";
 import type { Profile } from "../domain/profile.js";
 import type { Db } from "../db/database.js";
 import { getApplicationByJob, listApplicationsOnBoard, saveApplication } from "../db/repositories/applications.js";
+import { fetchAshbyApplicationForm } from "../sources/ashby.js";
 import { fetchGreenhouseJobDetail } from "../sources/greenhouse.js";
 import { computePacketHash } from "../submission/packet.js";
 import { validateResumeFile, type ResumeCheck } from "../submission/resume.js";
@@ -12,7 +13,7 @@ import { logger } from "../util/logger.js";
 import { draftAnswers, type FormQuestion } from "./answers.js";
 import { carryEmployerAnswers } from "./employerAnswers.js";
 import { buildMatchReport, selectResume, type MatchReport } from "./matchReport.js";
-import { defaultQuestionSet, greenhouseQuestionsToForm } from "./questions.js";
+import { ashbyQuestionsToForm, defaultQuestionSet, greenhouseQuestionsToForm } from "./questions.js";
 
 /**
  * Shared application preparation.
@@ -35,22 +36,31 @@ export type PreparedApplication = {
   autoFilled: Array<{ key: string; label: string; answer: string; citation: string }>;
 };
 
+/** Boards that publish each posting's form before the browser opens. */
+const QUESTION_LOADERS: Partial<Record<string, (board: string, externalId: string) => Promise<FormQuestion[]>>> = {
+  greenhouse: async (board, externalId) => {
+    const detail = await fetchGreenhouseJobDetail(board, externalId);
+    return greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
+  },
+  ashby: async (board, externalId) => ashbyQuestionsToForm(await fetchAshbyApplicationForm(board, externalId)),
+};
+
 async function loadQuestions(
   ats: string,
   board: string,
   externalId: string,
 ): Promise<{ questions: FormQuestion[]; source: string }> {
-  if (ats !== "greenhouse") {
+  const load = QUESTION_LOADERS[ats];
+  if (!load) {
     return { questions: defaultQuestionSet(), source: "baseline (board does not publish a question schema)" };
   }
   try {
-    const detail = await fetchGreenhouseJobDetail(board, externalId);
-    const questions = greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
+    const questions = await load(board, externalId);
     return questions.length > 0
-      ? { questions, source: "greenhouse job board API" }
+      ? { questions, source: `${ats} job board API` }
       : { questions: defaultQuestionSet(), source: "baseline (empty question set returned)" };
   } catch (error) {
-    logger.warn("greenhouse question fetch failed", { error: toErrorMessage(error) });
+    logger.warn(`${ats} question fetch failed`, { error: toErrorMessage(error) });
     return { questions: defaultQuestionSet(), source: `baseline (question fetch failed: ${toErrorMessage(error)})` };
   }
 }

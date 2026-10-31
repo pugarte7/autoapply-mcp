@@ -1,3 +1,4 @@
+import type { AshbyFormEntry } from "../sources/ashby.js";
 import type { GreenhouseQuestion } from "../sources/greenhouse.js";
 import type { FormQuestion } from "./answers.js";
 
@@ -99,6 +100,33 @@ export function greenhouseQuestionsToForm(questions: readonly GreenhouseQuestion
     (question) => /\blocation\b|\bcity\b/i.test(question.label) || /location/i.test(question.key),
   );
   return asksLocation ? converted : [...converted, GREENHOUSE_LOCATION_QUESTION];
+}
+
+/** Ashby's field types in the Greenhouse vocabulary the drafter already speaks. */
+const ASHBY_TYPES: Record<string, string> = {
+  LongText: "textarea",
+  File: "input_file",
+  ValueSelect: "multi_value_single_select",
+  MultiValueSelect: "multi_value_multi_select",
+  Boolean: "multi_value_single_select",
+};
+
+export function ashbyQuestionsToForm(entries: readonly AshbyFormEntry[]): FormQuestion[] {
+  return entries.flatMap((entry) => {
+    const field = entry.field ?? {};
+    const key = typeof field.path === "string" ? field.path : "";
+    if (!key) return [];
+    const ashbyType = typeof field.type === "string" ? field.type : "";
+    const choices = asRecordArray(field.selectableValues).map((value) => String(value.label ?? "")).filter(Boolean);
+    return [{
+      key,
+      label: typeof field.title === "string" ? field.title : key,
+      required: entry.isRequired === true,
+      type: ASHBY_TYPES[ashbyType] ?? "input_text",
+      // Ashby renders a Boolean as a Yes / No pair and publishes no choices for it.
+      options: ashbyType === "Boolean" && choices.length === 0 ? ["Yes", "No"] : choices,
+    }];
+  });
 }
 
 /**
