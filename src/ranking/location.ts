@@ -268,6 +268,40 @@ const US_SIGNALS = [
   ...US_STATE_ABBREVIATIONS.map((code) => `\\b${code.toLowerCase()}\\b`),
 ];
 
+// Lever writes Spain as ESP. "ES" alone is left out: it is a Spanish word.
+const SPAIN_SIGNALS = ["spain", "espana", "\\besp\\b"];
+
+/**
+ * Checked before the US signals, which carry LA for Louisiana: "La Coruña"
+ * would otherwise be a US posting.
+ */
+const SPAIN_UNAMBIGUOUS = [
+  "madrid", "barcelona", "sevilla", "seville", "malaga", "bilbao", "zaragoza", "alicante", "palma de mallorca",
+  "las palmas", "murcia", "vigo", "a coruna", "la coruna", "valladolid", "san sebastian", "donostia", "pamplona",
+  "gijon", "oviedo", "tarragona", "girona", "sant cugat", "alcobendas", "pozuelo", "getafe", "leganes",
+  "castellon", "santiago de compostela",
+];
+
+/** Also cities in the Americas (Valencia, Venezuela; Córdoba, Argentina; Toledo, Ohio): only with a Spain signal. */
+const SPAIN_AMBIGUOUS = ["valencia", "cordoba", "granada", "santander", "salamanca", "toledo", "leon", "santiago"];
+
+/** Scopes that span the region; only these make a remote posting remote-europe. */
+const EUROPE_REGION_SIGNALS = ["europe", "european union", "emea", "\\beu\\b"];
+
+/**
+ * One country or city. "Remote - Germany" asks the candidate to live in
+ * Germany, which is another European country for this purpose, not Europe-wide.
+ */
+const EUROPE_PLACES = [
+  "\\buk\\b", "united kingdom", "germany", "france", "portugal",
+  "italy", "netherlands", "ireland", "belgium", "switzerland", "austria", "poland", "sweden", "denmark", "norway",
+  "finland", "czechia", "czech republic", "romania", "greece", "hungary", "luxembourg", "estonia", "lithuania",
+  "latvia", "croatia", "bulgaria", "slovakia", "slovenia", "london", "paris", "berlin", "munich", "hamburg",
+  "frankfurt", "cologne", "lisbon", "porto", "amsterdam", "rotterdam", "dublin", "milan", "rome", "warsaw",
+  "krakow", "prague", "vienna", "zurich", "geneva", "stockholm", "copenhagen", "oslo", "helsinki", "brussels",
+  "bucharest", "athens", "budapest",
+];
+
 const REMOTE_SIGNALS = ["remote", "work from home", "work at home", "wfh", "distributed", "anywhere", "virtual"];
 const HYBRID_SIGNALS = ["hybrid", "flexible onsite", "in-office days"];
 const ONSITE_SIGNALS = ["on-site", "onsite", "in office", "in-office"];
@@ -311,7 +345,8 @@ function detectWorkplace(text: string, hints: LocationHints): WorkplaceType {
 }
 
 function classifyOne(raw: string, hints: LocationHints): LocationAnalysis {
-  const text = normalizeForMatch(raw);
+  // Accents are dropped first: normalizeForMatch turns "España" into "espa a".
+  const text = normalizeForMatch(raw.normalize("NFD").replace(/[̀-ͯ]/g, ""));
   const workplaceType = detectWorkplace(text, hints);
   const isRemote = workplaceType === "remote";
 
@@ -329,10 +364,17 @@ function classifyOne(raw: string, hints: LocationHints): LocationAnalysis {
   // province signal alongside "remote" is a remote scope, not an office.
   const canadaCityHit =
     matchesAny(text, CANADA_UNAMBIGUOUS) ?? (hasCanadaSignal ? matchesAny(text, CANADA_AMBIGUOUS) : null);
+  const hasSpainSignal = matchesAny(text, SPAIN_SIGNALS);
+  const spainCityHit = matchesAny(text, SPAIN_UNAMBIGUOUS) ?? (hasSpainSignal ? matchesAny(text, SPAIN_AMBIGUOUS) : null);
+  const europeRegionHit = matchesAny(text, EUROPE_REGION_SIGNALS);
+  const europePlaceHit = matchesAny(text, EUROPE_PLACES);
 
-  if (isRemote && !canadaCityHit && !bayHit) {
+  if (isRemote && !canadaCityHit && !bayHit && !spainCityHit) {
     if (hasCanadaSignal) return { locationClass: "remote-canada", country: "CA", workplaceType, matched: hasCanadaSignal };
     if (hasUsSignal) return { locationClass: "remote-us", country: "US", workplaceType, matched: hasUsSignal };
+    if (hasSpainSignal) return { locationClass: "remote-spain", country: "ES", workplaceType, matched: hasSpainSignal };
+    if (europePlaceHit) return { locationClass: "europe", country: "unknown", workplaceType, matched: europePlaceHit };
+    if (europeRegionHit) return { locationClass: "remote-europe", country: "unknown", workplaceType, matched: europeRegionHit };
     return { locationClass: "remote-global", country: "unknown", workplaceType, matched: "remote" };
   }
 
@@ -344,7 +386,11 @@ function classifyOne(raw: string, hints: LocationHints): LocationAnalysis {
   if (bayHit) {
     return { locationClass: "bay-area", country: "US", workplaceType, matched: bayHit };
   }
+  if (spainCityHit) return { locationClass: "spain", country: "ES", workplaceType, matched: spainCityHit };
   if (hasUsSignal) return { locationClass: "us-other", country: "US", workplaceType, matched: hasUsSignal };
+  if (hasSpainSignal) return { locationClass: "spain", country: "ES", workplaceType, matched: hasSpainSignal };
+  const europeHit = europePlaceHit ?? europeRegionHit;
+  if (europeHit) return { locationClass: "europe", country: "unknown", workplaceType, matched: europeHit };
   if (text.length === 0) return { locationClass: "unknown", country: "unknown", workplaceType, matched: "" };
   return { locationClass: "other", country: "unknown", workplaceType, matched: text.slice(0, 40) };
 }
@@ -353,9 +399,13 @@ const CLASS_PRIORITY: Record<LocationClass, number> = {
   "bay-area": 100,
   canada: 90,
   "remote-canada": 80,
+  spain: 70,
+  "remote-spain": 65,
   "remote-us": 60,
   "us-other": 50,
+  "remote-europe": 45,
   "remote-global": 40,
+  europe: 30,
   other: 20,
   unknown: 10,
 };

@@ -145,7 +145,9 @@ Keyword weights run 0 to 10. Coverage saturates rather than requiring a full swe
 { "allow": ["bay-area", "canada", "remote-canada"], "workplaceTypes": ["onsite", "hybrid", "remote", "unknown"] }
 ```
 
-Location classes: `bay-area`, `us-other`, `canada`, `remote-us`, `remote-canada`, `remote-global`, `other`, `unknown`.
+Location classes: `bay-area`, `us-other`, `canada`, `remote-us`, `remote-canada`, `remote-global`, `spain`, `remote-spain`, `europe`, `remote-europe`, `other`, `unknown`.
+
+`remote-europe` is a Europe-wide scope (Europe, EMEA, EU). A remote posting tied to one other country, such as "Remote - Germany", is `europe`, because it asks the candidate to live there. A campaign for someone in Spain would usually allow `["spain", "remote-spain", "remote-europe"]`.
 
 Classification handles ambiguous city names: `Richmond, BC` is Canada, `Richmond, CA` is the Bay Area, `Newark, NJ` is neither. A posting listing several offices keeps the strongest match.
 

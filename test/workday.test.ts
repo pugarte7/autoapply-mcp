@@ -293,7 +293,7 @@ describe("workday adapter", () => {
 
     expect(jobs.map((job) => [job.locationClass, job.country])).toEqual([
       ["remote-us", "US"],
-      ["other", "unknown"],
+      ["europe", "unknown"],
     ]);
   });
 });

@@ -204,8 +204,8 @@ describe("new source tools through MCP", () => {
 
   it.each([
     { name: "ForeignFloorOffice", ats: "workday", board: "foreignfloor/wd5/Careers",
-      location: "India, Hyderabad, DVS, SEZ-1 - Orion B4; FL 7,8,9,11" },
-    { name: "DutchOffice", ats: "greenhouse", board: "dutchoffice", location: "Rotterdam, NL" },
+      location: "India, Hyderabad, DVS, SEZ-1 - Orion B4; FL 7,8,9,11", locationClass: "other" },
+    { name: "DutchOffice", ats: "greenhouse", board: "dutchoffice", location: "Rotterdam, NL", locationClass: "europe" },
   ] as const)("keeps $name foreign postings out of the US/Canada application queue", async (company) => {
     const description = "<p>Build AI security guardrails in Python. Base salary: $240,000-$300,000 per year.</p>";
     const title = "Senior Security Engineer";
@@ -235,7 +235,7 @@ describe("new source tools through MCP", () => {
       SELECT j.location_class,j.country,e.decision,e.gate_rule FROM jobs j
       JOIN evaluations e ON e.job_id=j.id WHERE j.company_name=?`).get(company.name);
     expect(stored).toMatchObject({
-      location_class: "other", country: "unknown", decision: "reject", gate_rule: "location-not-allowed",
+      location_class: company.locationClass, country: "unknown", decision: "reject", gate_rule: "location-not-allowed",
     });
     const queued = await call("list_queue", { companies: [company.name] });
     expect(queued.error).toBe(false);

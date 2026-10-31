@@ -241,10 +241,13 @@ describe("Workable public adapter", () => {
     expect(json).toHaveBeenCalledTimes(2);
   });
 
-  it.each(["Remote - Germany", "Remote - EMEA"])("does not widen a restricted text location: %s", async (location) => {
+  it.each([
+    ["Remote - Germany", "europe"],
+    ["Remote - EMEA", "remote-europe"],
+  ])("does not widen a restricted text location: %s", async (location, locationClass) => {
     json.mockResolvedValue({ jobs: [workablePosting({ locations: undefined, location, telecommuting: true })] });
     const [job] = await workableAdapter.listJobs(company("workable"), capturedAt);
-    expect(job?.locationClass).toBe("other");
+    expect(job?.locationClass).toBe(locationClass);
     expect(job?.locationsRaw).toEqual([location]);
   });
 

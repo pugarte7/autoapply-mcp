@@ -45,7 +45,7 @@ describe("a bare remote location scoped by the posting title", () => {
 
   it("never overrides a location the posting states outright", () => {
     expect(normalize("Senior Engineer [Remote-US]", ["Toronto, ON"]).locationClass).toBe("canada");
-    expect(normalize("Senior Engineer [Remote-US]", ["Berlin, Germany"]).locationClass).toBe("other");
+    expect(normalize("Senior Engineer [Remote-US]", ["Berlin, Germany"]).locationClass).toBe("europe");
     expect(normalize("Senior Engineer (Remote - Canada)", ["Remote - US"]).locationClass).toBe("remote-us");
   });
 
@@ -123,15 +123,17 @@ describe("analyzeLocation", () => {
   it("handles empty and unknown input", () => {
     expect(analyzeLocation([]).locationClass).toBe("unknown");
     expect(analyzeLocation([""]).locationClass).toBe("unknown");
-    expect(analyzeLocation(["Berlin, Germany"]).locationClass).toBe("other");
+    expect(analyzeLocation(["Berlin, Germany"]).locationClass).toBe("europe");
   });
 
-  it.each(["Rio de Janeiro", "Ciudad de México", "Berlin, DE"])(
-    "does not treat the ambiguous DE token in %s as Delaware", (value) => {
-      expect(analyzeLocation([value]).country).not.toBe("US");
-      expect(analyzeLocation([value]).locationClass).toBe("other");
-    },
-  );
+  it.each([
+    ["Rio de Janeiro", "other"],
+    ["Ciudad de México", "other"],
+    ["Berlin, DE", "europe"],
+  ])("does not treat the ambiguous DE token in %s as Delaware", (value, locationClass) => {
+    expect(analyzeLocation([value]).country).not.toBe("US");
+    expect(analyzeLocation([value]).locationClass).toBe(locationClass);
+  });
 
   it("does not promote a Brazil-only multi-location role into the US queue", () => {
     expect(analyzeLocation(["São Paulo", "Campinas", "Belo Horizonte", "Rio de Janeiro"]).locationClass).toBe("other");
@@ -144,7 +146,7 @@ describe("analyzeLocation", () => {
   });
 
   it("keeps foreign and US options distinct in the multi-location view", () => {
-    expect(allLocationClasses(["Rio de Janeiro", "Palo Alto", "Berlin, DE", ""])).toEqual(["other", "bay-area"]);
+    expect(allLocationClasses(["Rio de Janeiro", "Palo Alto", "Berlin, DE", ""])).toEqual(["other", "bay-area", "europe"]);
   });
 
   it.each([
@@ -169,15 +171,17 @@ describe("analyzeLocation", () => {
 
   it.each(["Rotterdam, NL", "Amsterdam, NL"])(
     "does not mistake the country shorthand in %s for a Canadian province", (value) => {
-      expect(analyzeLocation([value])).toMatchObject({ locationClass: "other", country: "unknown" });
+      expect(analyzeLocation([value])).toMatchObject({ locationClass: "europe", country: "unknown" });
     },
   );
 
-  it.each(["On-Site - Madrid", "On-site, Barcelona", "On Site - Lisbon"])(
-    "does not mistake the workplace in %s for Ontario", (value) => {
-      expect(analyzeLocation([value])).toMatchObject({ locationClass: "other", country: "unknown" });
-    },
-  );
+  it.each([
+    ["On-Site - Madrid", "spain"],
+    ["On-site, Barcelona", "spain"],
+    ["On Site - Lisbon", "europe"],
+  ])("does not mistake the workplace in %s for Ontario", (value, locationClass) => {
+    expect(analyzeLocation([value]).locationClass).toBe(locationClass);
+  });
 
   it.each(["Toronto, ON", "Ottawa, ON, Canada", "On-site - Waterloo, ON"])("still reads Ontario in %s", (value) => {
     expect(analyzeLocation([value]).locationClass).toBe("canada");
@@ -189,7 +193,7 @@ describe("analyzeLocation", () => {
     }
     expect(analyzeLocation(["Remote - Newfoundland and Labrador"]).locationClass).toBe("remote-canada");
     expect(analyzeLocation(["Remote - NL"]).country).toBe("unknown");
-    expect(allLocationClasses(["Rotterdam, NL", "Toronto, ON"])).toEqual(["other", "canada"]);
+    expect(allLocationClasses(["Rotterdam, NL", "Toronto, ON"])).toEqual(["europe", "canada"]);
   });
 
   it("honours explicit remote hints from the ATS", () => {
@@ -221,5 +225,35 @@ describe("analyzeLocation", () => {
     it("leaves a location alone without one", () => {
       expect(analyzeLocation(["Operations - Raleigh - Creedmoor"]).locationClass).toBe("other");
     });
+  });
+});
+
+describe("Spain and Europe", () => {
+  it.each([
+    ["Madrid, Madrid, Spain", "spain", "ES"],
+    ["Hybrid - Madrid", "spain", "ES"],
+    ["La Coruña, España", "spain", "ES"],
+    ["Valencia, Spain", "spain", "ES"],
+    ["Paris, France", "europe", "unknown"],
+  ])("places %s", (value, locationClass, country) => {
+    expect(analyzeLocation([value])).toMatchObject({ locationClass, country });
+  });
+
+  it.each([
+    ["Remote - Spain", "remote-spain"],
+    ["Spain (Remote)", "remote-spain"],
+    ["Remote - EMEA", "remote-europe"],
+    // Living in Germany is required, so it is another European country rather than Europe-wide.
+    ["Remote - Germany", "europe"],
+  ])("scopes the remote posting %s", (value, locationClass) => {
+    expect(analyzeLocation([value], { isRemote: true }).locationClass).toBe(locationClass);
+  });
+
+  it.each([["Valencia, CA"], ["Toledo, OH"]])("leaves the American %s in the US", (value) => {
+    expect(analyzeLocation([value]).locationClass).toBe("us-other");
+  });
+
+  it("prefers the Spanish office of a posting that lists several European ones", () => {
+    expect(analyzeLocation(["Paris, France", "Barcelona, Spain"]).locationClass).toBe("spain");
   });
 });
