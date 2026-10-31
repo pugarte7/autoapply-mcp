@@ -26,7 +26,12 @@ export type PreparedApplication = {
   report: MatchReport;
   resumeCheck: ResumeCheck;
   questionSource: string;
-  outstanding: Array<{ key: string; label: string; category: string; suggested: string; guidance: string }>;
+  /**
+   * `options` are the choices the board offers. Without them whoever answers
+   * writes free text: "Yes" for Cabify's "Daily / Occasionally / Rarely / Not
+   * yet" left a required dropdown empty at fill time.
+   */
+  outstanding: Array<{ key: string; label: string; category: string; suggested: string; guidance: string; options: string[] }>;
   autoFilled: Array<{ key: string; label: string; answer: string; citation: string }>;
 };
 
@@ -119,6 +124,7 @@ export async function prepareApplicationFor(
 
   saveApplication(db, application);
 
+  const optionsByKey = new Map(questions.map((question) => [question.key, question.options ?? []]));
   return {
     application,
     report,
@@ -132,6 +138,7 @@ export async function prepareApplicationFor(
         category: answer.category,
         suggested: answer.answer,
         guidance: answer.guidance,
+        options: optionsByKey.get(answer.questionKey) ?? [],
       })),
     autoFilled: answers
       .filter((answer) => !answer.requiresHuman)
