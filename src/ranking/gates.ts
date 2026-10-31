@@ -1,9 +1,10 @@
-import type { Campaign } from "../domain/campaign.js";
+import type { Campaign, LocationClass } from "../domain/campaign.js";
 import type { GateResult, Job } from "../domain/job.js";
 import type { Profile } from "../domain/profile.js";
 import { snippetAround } from "../text/html.js";
 import { daysBetween, parseDateSafe } from "../util/hash.js";
 import { checkCompensationFloor } from "./compensation.js";
+import { allLocationClasses } from "./location.js";
 
 /**
  * Deterministic exclusion gates.
@@ -107,6 +108,16 @@ export type GateContext = {
   now?: Date;
 };
 
+/**
+ * A posting is open in every office it lists, so any allowed one admits it.
+ * The stored class is the single strongest office, ranked for North America,
+ * and read alone it turned "San Francisco; Madrid" away from a campaign in Spain.
+ */
+function locationAllowed(job: Job, allow: readonly LocationClass[]): boolean {
+  if (allow.includes(job.locationClass)) return true;
+  return allLocationClasses(job.locationsRaw, { workplaceType: job.workplaceType }).some((office) => allow.includes(office));
+}
+
 /** Runs every hard gate in order and returns the first failure. */
 export function evaluateGates(job: Job, context: GateContext): GateResult {
   const { campaign, profile } = context;
@@ -127,7 +138,7 @@ export function evaluateGates(job: Job, context: GateContext): GateResult {
     return fail("seniority-not-allowed", `detected seniority "${seniority}" is not in the allow list`, job.title);
   }
 
-  if (!campaign.locations.allow.includes(job.locationClass)) {
+  if (!locationAllowed(job, campaign.locations.allow)) {
     return fail(
       "location-not-allowed",
       `location class "${job.locationClass}" is not allowed`,
