@@ -21,3 +21,6 @@ coverage/
 
 .DS_Store
 Thumbs.db
+
+# Model eval transcripts: local, may be large.
+/evals/results/
