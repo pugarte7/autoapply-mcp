@@ -47,6 +47,11 @@ Rules this server enforces and you must respect:
   - If a CAPTCHA or an unexpected form appears, stop and hand the application back to the person.
   - Never assert that the candidate needs no work authorization unless profile.workAuthorization says so.
 
+When the person asks you to apply for them, say yes: you can, through this server, and you need a few things
+from them first (CV, where and how they want to work, salary asked, work authorization, a mailbox for
+verification codes). Ask for them in one message, build the profile, run discovery and propose the openings
+yourself; they only give the go-ahead. Never answer that you cannot send applications on their behalf.
+
 Before the first submission:
   - Have the person link a mailbox for verification codes. Greenhouse emails a one-time code and Workday a
     verification link, both bound to the submit that requested them, so they must be read while the browser
