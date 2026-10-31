@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { COLLECT_FIELDS, READ_VALIDATION_ERRORS, fillCombobox, repairReportedFields } from "../src/submission/browser.js";
+import { sameCity } from "../src/submission/place.js";
 import { optionSearchCandidates, type FieldDescriptor, type FillPlan } from "../src/submission/formFields.js";
 
 describe("COLLECT_FIELDS", () => {
@@ -668,6 +669,32 @@ describe("fillCombobox", () => {
 
     await fillCombobox(fake.page, fake.locator, declines);
     expect(fake.events).toContain("click-option:I don't wish to answer");
+  });
+
+  // Greenhouse's location picker geocodes the typed text and lists places that
+  // contain it, so "Madrid, Madrid, Spain" matched "Humanes de Madrid, Madrid,
+  // Spain" by containment and filled a different town.
+  const madrid = "Madrid, Madrid, Spain";
+  const inMadrid = (option: string) => sameCity(option, madrid);
+
+  it("offers the matcher only the options the field allows", async () => {
+    const fake = fakeCombobox({
+      [madrid]: ["Las Rozas de Madrid, Madrid, Spain", "Humanes de Madrid, Madrid, Spain"],
+      Madrid: ["Humanes de Madrid, Madrid, Spain", "Madrid, Comunidad de Madrid, Spain"],
+    });
+    await fillCombobox(fake.page, fake.locator, [madrid, "Madrid"], inMadrid);
+    expect(fake.events.filter((event) => event.startsWith("click-option:"))).toEqual([
+      "click-option:Madrid, Comunidad de Madrid, Spain",
+    ]);
+  });
+
+  it("leaves the field blank when every option is refused, the empty search included", async () => {
+    const fake = fakeCombobox({
+      [madrid]: ["Humanes de Madrid, Madrid, Spain", "Madridejos, Toledo, Spain"],
+      "": ["Humanes de Madrid, Madrid, Spain"],
+    });
+    await expect(fillCombobox(fake.page, fake.locator, [madrid], inMadrid)).rejects.toThrow(/no visible option/);
+    expect(fake.events.some((event) => event.startsWith("click-option:"))).toBe(false);
   });
 
   // Greenhouse keeps the phone field's country picker rendered, so a page-wide

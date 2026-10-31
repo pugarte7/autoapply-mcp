@@ -86,6 +86,16 @@ describe("matchFields", () => {
     expect(matches.map((match) => match.answer)).toEqual([null, null, null]);
   });
 
+  it("will not pair two questions that share only their scaffolding", () => {
+    // Sony's form paired "What is your current salary?" with the notice-period
+    // answer on "what is your current" and wrote "15 days" into the salary box.
+    const matches = matchFields(
+      [field("What is your current salary?")],
+      [answer("What is your current notice period?", "15 days")],
+    );
+    expect(matches[0]?.answer).toBeNull();
+  });
+
   it("still matches an answer label contained as whole words", () => {
     const matches = matchFields([field("Your Full Name")], [answer("Full Name", "Alex Kim")]);
     expect(matches[0]?.answer?.answer).toBe("Alex Kim");

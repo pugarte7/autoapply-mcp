@@ -137,6 +137,29 @@ function dwarfs(container: string, contained: string): boolean {
   return containerTokens >= 6 && containerTokens >= 4 * Math.max(1, tokens(contained).length);
 }
 
+/** The words that open a question without saying what it asks. */
+const QUESTION_SCAFFOLD = new Set([
+  "about", "any", "are", "can", "could", "did", "does", "doing", "for", "from",
+  "give", "has", "have", "how", "let", "may", "might", "must", "our", "out",
+  "please", "shall", "share", "should", "tell", "that", "the", "their", "them",
+  "they", "this", "was", "were", "what", "when", "where", "which", "who",
+  "whom", "whose", "why", "will", "with", "would", "you", "your", "yours",
+  "yourself", "current", "currently",
+]);
+
+/**
+ * Whether two labels that each name a subject share no word but scaffolding.
+ * Sony's form paired "What is your current salary?" with the notice-period
+ * answer on "what your current" - three of five words, exactly the bar - and
+ * wrote "15 days" into the salary box. Containment is decided before this is
+ * asked, and a contained phrase shares every subject word with its container.
+ */
+function sharesOnlyScaffolding(left: ReadonlySet<string>, right: readonly string[]): boolean {
+  const subject = right.filter((token) => !QUESTION_SCAFFOLD.has(token));
+  if (subject.length === 0 || [...left].every((token) => QUESTION_SCAFFOLD.has(token))) return false;
+  return !subject.some((token) => left.has(token));
+}
+
 /**
  * Scores how alike a field label and an answer label are, in that order. The
  * order matters for containment: a long field label holding a short answer
@@ -154,6 +177,7 @@ function similarity(a: string, b: string): number {
   const leftTokens = new Set(tokens(left));
   const rightTokens = tokens(right);
   if (leftTokens.size === 0 || rightTokens.length === 0) return 0;
+  if (sharesOnlyScaffolding(leftTokens, rightTokens)) return 0;
   const overlap = rightTokens.filter((token) => leftTokens.has(token)).length;
   return overlap / Math.max(leftTokens.size, rightTokens.length);
 }
