@@ -22,7 +22,8 @@ const CATEGORY_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ["reference", /\breference[sd]?\b|\breferred by\b|\breferral\b/i],
   ["source", /\bhow did you (?:hear|find)\b|\bsource\b/i],
   ["start-date", /\b(start date|available to start|availability|notice period|earliest start)\b/i],
-  ["contact", /\b(first name|last name|full name|preferred name|email|phone|mobile|address|city|state|province|postal|zip|country|location|linkedin|github|portfolio|website|resume|cv|cover letter)\b/i],
+  // A label that is only "Name" is the candidate's: Ashby's system name field.
+  ["contact", /\b(first name|last name|full name|preferred name|email|phone|mobile|address|city|state|province|postal|zip|country|location|linkedin|github|portfolio|website|resume|cv|cover letter)\b|^\s*name\s*$/i],
   ["essay", /\bwhy (?:do you|are you|would you)\b|\btell us\b|\bdescribe\b|\bwhat (?:interests|excites|motivates)\b|\bin your own words\b/i],
 ];
 
