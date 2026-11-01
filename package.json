@@ -1,7 +1,7 @@
 {
   "name": "autoapply-mcp",
   "version": "0.1.0",
-  "description": "An MCP server that discovers, gates, ranks, tailors and submits job applications from a structured candidate profile - with hard safety gates and a human approval boundary.",
+  "description": "AI job application agent: an MCP server that lets Claude, Cursor or Codex find jobs and apply on Greenhouse, Lever, Ashby and Workday, with hard safety gates and human approval.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -11,9 +11,26 @@
     "greenhouse",
     "lever",
     "ashby",
-    "automation"
+    "automation",
+    "mcp-server",
+    "ai-agent",
+    "job-application",
+    "auto-apply",
+    "job-automation",
+    "workday",
+    "claude",
+    "cursor",
+    "codex"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pugarte7/autoapply-mcp.git"
+  },
+  "homepage": "https://github.com/pugarte7/autoapply-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/pugarte7/autoapply-mcp/issues"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
