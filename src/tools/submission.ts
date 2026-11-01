@@ -1,26 +1,25 @@
 import { z } from "zod";
 import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { getWorkspace } from "../config/load.js";
 import {
   countSubmittedSince,
-  getApplication,
   lastSubmissionAt,
   latestApproval,
-  recordApproval,
   saveApplication,
 } from "../db/repositories/applications.js";
 import { appendEvent } from "../db/repositories/events.js";
-import { applicationCountsByCompany, getEvaluation, getJob } from "../db/repositories/jobs.js";import { runApplicationForm } from "../submission/browser.js";
+import { applicationCountsByCompany, getEvaluation } from "../db/repositories/jobs.js";
+import { applicationQuestion, askPerson, packetFor, recordApplicationDecision } from "../submission/approvals.js";
+import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
-import { computePacketHash, renderPacketPreview, type SubmissionPacket } from "../submission/packet.js";
+import { renderPacketPreview } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
 import { personalResolverFor } from "../submission/personalResolver.js";
 import { experienceResolverFor } from "../submission/experienceResolver.js";
 import { narrativeResolverFor } from "../submission/narrativeResolver.js";
 import { isWorkdayUrl } from "../submission/workdayFlow.js";
-import { newId, nowIso } from "../util/hash.js";
+import { nowIso } from "../util/hash.js";
 import { handler, ok, okText } from "./helpers.js";
 
 /**
@@ -30,33 +29,13 @@ import { handler, ok, okText } from "./helpers.js";
  * one re-checks the guards rather than trusting earlier state.
  */
 
-function packetFor(applicationId: string) {
-  const workspace = getWorkspace();
-  const application = getApplication(workspace.db, applicationId);
-  if (!application) throw new AppError("application_not_found", `no application ${applicationId}`);
-  const job = getJob(workspace.db, application.jobId);
-  if (!job) throw new AppError("job_not_found", `job ${application.jobId} is missing`);
-  const packet: SubmissionPacket = {
-    applicationId: application.id,
-    jobId: application.jobId,
-    company: job.companyName,
-    jobTitle: job.title,
-    applyUrl: job.applyUrl,
-    resumeId: application.resumeId,
-    resumePath: application.resumePath,
-    coverLetter: application.coverLetter,
-    answers: application.answers,
-  };
-  return { workspace, application, job, packet, currentHash: computePacketHash(packet) };
-}
-
 export function registerSubmissionTools(server: McpServer): void {
   server.registerTool(
     "approve_application",
     {
-      title: "Approve an application for submission",
+      title: "Ask the person to approve an application",
       description:
-        "Records the human decision that authorizes submission. The supplied packetHash must match the current content exactly; any later edit invalidates the approval.",
+        "Shows the person the exact packet and records their answer: the decision is theirs, asked through the client's approval dialog, never the model's. The supplied packetHash must match the current content exactly; any later edit invalidates the approval. Rejecting needs no confirmation.",
       inputSchema: {
         applicationId: z.string().min(1),
         packetHash: z.string().min(8).describe("Hash shown by preview_application, proving the approved content."),
@@ -66,40 +45,25 @@ export function registerSubmissionTools(server: McpServer): void {
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     handler(async (args: { applicationId: string; packetHash: string; decision?: "approved" | "rejected"; note?: string }) => {
-      const { workspace, application, currentHash } = packetFor(args.applicationId);
       const decision = args.decision ?? "approved";
-
+      const { packet, currentHash } = packetFor(args.applicationId);
       if (args.packetHash !== currentHash) {
         throw new AppError(
           "packet_hash_mismatch",
           `supplied hash does not match current content (current: ${currentHash}). Re-run preview_application and approve the current packet.`,
         );
       }
-
-      recordApproval(workspace.db, {
-        id: newId("apr"),
-        applicationId: application.id,
-        packetHash: currentHash,
-        decision,
-        note: args.note ?? "",
-      });
-
-      const updated = {
-        ...application,
-        packetHash: currentHash,
-        status: decision === "approved" ? ("approved" as const) : ("skipped" as const),
-        approvedAt: decision === "approved" ? nowIso() : null,
-      };
-      saveApplication(workspace.db, updated);
-      appendEvent(workspace.db, "application.approval", application.id, { decision, packetHash: currentHash });
-
-      return ok({
-        applicationId: application.id,
-        decision,
-        status: updated.status,
-        packetHash: currentHash,
-        nextStep: decision === "approved" ? "Call submit_application." : "No further action; application skipped.",
-      });
+      if (decision === "approved") {
+        const yes = await askPerson(server, applicationQuestion(packet, currentHash), `${args.applicationId} ${currentHash}`);
+        if (!yes) {
+          return ok({
+            applicationId: args.applicationId,
+            decision: "declined",
+            nextStep: "The person did not approve this packet. Ask what to change; nothing was recorded.",
+          });
+        }
+      }
+      return ok(recordApplicationDecision(args.applicationId, currentHash, decision, args.note ?? ""));
     }),
   );
 

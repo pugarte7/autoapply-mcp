@@ -3,6 +3,7 @@ import { jsonOrDefault, textOrNull } from "../database.js";
 import type { CompensationRange, Evaluation, Job } from "../../domain/job.js";
 import { nowIso } from "../../util/hash.js";
 import { annualize } from "../../ranking/compensation.js";
+import { jobLocationClasses } from "../../ranking/location.js";
 
 /** Row mapping and queries for discovered jobs and their evaluations. */
 
@@ -292,7 +293,7 @@ function filterQueueRows(
     )
     .filter((item) =>
       filter.locationClasses && filter.locationClasses.length > 0
-        ? filter.locationClasses.includes(item.job.locationClass)
+        ? jobLocationClasses(item.job).some((office) => filter.locationClasses?.includes(office))
         : true,
     )
     .filter((item) =>

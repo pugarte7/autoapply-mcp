@@ -5,7 +5,7 @@ import type { Db } from "../db/database.js";
 import { getApplicationByJob, listApplicationsOnBoard, saveApplication } from "../db/repositories/applications.js";
 import { fetchAshbyApplicationForm } from "../sources/ashby.js";
 import { fetchGreenhouseJobDetail } from "../sources/greenhouse.js";
-import { fetchLeverApplyPage } from "../sources/lever.js";
+import { fetchLeverApplicationForm } from "../sources/lever.js";
 import { computePacketHash } from "../submission/packet.js";
 import { validateResumeFile, type ResumeCheck } from "../submission/resume.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
@@ -38,13 +38,13 @@ export type PreparedApplication = {
 };
 
 /** Boards that publish each posting's form before the browser opens. */
-const QUESTION_LOADERS: Partial<Record<string, (job: Job) => Promise<FormQuestion[]>>> = {
+const QUESTION_LOADERS: Partial<Record<Job["ats"], (job: Job) => Promise<FormQuestion[]>>> = {
   greenhouse: async (job) => {
     const detail = await fetchGreenhouseJobDetail(job.board, job.externalId);
     return greenhouseQuestionsToForm([...detail.questions, ...detail.compliance]);
   },
   ashby: async (job) => ashbyQuestionsToForm(await fetchAshbyApplicationForm(job.board, job.externalId)),
-  lever: async (job) => leverQuestionsToForm(await fetchLeverApplyPage(job.applyUrl)),
+  lever: async (job) => leverQuestionsToForm(await fetchLeverApplicationForm(job.applyUrl)),
 };
 
 async function loadQuestions(job: Job): Promise<{ questions: FormQuestion[]; source: string }> {

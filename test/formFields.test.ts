@@ -20,6 +20,7 @@ import {
   stalePlaceholderFields,
   workdayListsSubmitted,
   type FieldDescriptor,
+  withKinds,
 } from "../src/submission/formFields.js";
 import type { DraftAnswer } from "../src/domain/job.js";
 
@@ -3936,5 +3937,16 @@ describe("a list of choices whose label mentions a contact detail", () => {
     const matches = matchFields([field("Phone Number", { type: "tel" })], [answer("Phone", "+1 604 555 0100")]);
 
     expect(matches[0]?.answer?.answer).toBe("+1 604 555 0100");
+  });
+});
+describe("withKinds", () => {
+  it("marks a geocoding city picker, and nothing else", () => {
+    const fields = withKinds([
+      field("Location (City)*", { role: "combobox" }),
+      field("Where do you live?", { role: "combobox", domId: "candidate-location" }),
+      field("Location (City)*"),
+      field("Country", { role: "combobox" }),
+    ]);
+    expect(fields.map((f) => f.kind)).toEqual(["city", "city", undefined, undefined]);
   });
 });

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { fixtureResumePath } from "./factories.js";
@@ -12,6 +13,7 @@ import { fixtureResumePath } from "./factories.js";
 
 let home: string;
 let client: Client;
+let personShown: string[] = [];
 
 const profile = {
   version: 1,
@@ -140,7 +142,8 @@ beforeAll(async () => {
   resetWorkspaceCache();
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  client = new Client({ name: "batch-test", version: "1.0.0" });
+  client = new Client({ name: "batch-test", version: "1.0.0" }, ASKS_PERSON);
+  personShown = person(client).shown;
   await Promise.all([client.connect(clientTransport), createServer().connect(serverTransport)]);
 });
 
@@ -188,9 +191,13 @@ describe("batch workflow", () => {
     const wrongHash = await callTool("approve_batch", { batchId, manifestHash: "0".repeat(64), expectedCount: 2 });
     expect(wrongHash.isError).toBe(true);
     expect(wrongHash.text).toContain("manifest_mismatch");
+    // Neither was put to the person: a wrong request is refused before anyone is asked.
+    expect(personShown).toHaveLength(0);
 
     const approved = parse((await callTool("approve_batch", { batchId, manifestHash, expectedCount: 2 })).text);
     expect(approved.approved).toBe(2);
+    expect(personShown).toHaveLength(1);
+    expect(personShown[0]).toContain("Send these 2 application(s)?");
 
     const submitted = parse((await callTool("submit_batch", { batchId, mode: "manual" })).text);
     expect(submitted.results).toHaveLength(2);

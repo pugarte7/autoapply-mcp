@@ -7,7 +7,6 @@ import {
   getApplication,
   lastSubmissionAt,
   latestApproval,
-  recordApproval,
   saveApplication,
 } from "../db/repositories/applications.js";
 import {
@@ -29,7 +28,6 @@ import { autoFillableFields } from "../drafting/personal.js";
 import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
-import { computePacketHash, type SubmissionPacket } from "../submission/packet.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
 import { newId, nowIso } from "../util/hash.js";
 import { logger } from "../util/logger.js";
@@ -38,6 +36,7 @@ import { experienceResolverFor } from "../submission/experienceResolver.js";
 import { narrativeResolverFor } from "../submission/narrativeResolver.js";
 import { isWorkdayUrl } from "../submission/workdayFlow.js";
 import { handler, ok } from "./helpers.js";
+import { askPerson, batchQuestion, checkBatchManifest, packetFor, recordBatchApproval } from "../submission/approvals.js";
 
 /**
  * Batch operations.
@@ -73,25 +72,6 @@ type FilterArgs = {
   limit?: number;
 };
 
-function packetFor(applicationId: string) {
-  const workspace = getWorkspace();
-  const application = getApplication(workspace.db, applicationId);
-  if (!application) throw new AppError("application_not_found", `no application ${applicationId}`);
-  const job = getJob(workspace.db, application.jobId);
-  if (!job) throw new AppError("job_not_found", `job ${application.jobId} is missing`);
-  const packet: SubmissionPacket = {
-    applicationId: application.id,
-    jobId: application.jobId,
-    company: job.companyName,
-    jobTitle: job.title,
-    applyUrl: job.applyUrl,
-    resumeId: application.resumeId,
-    resumePath: application.resumePath,
-    coverLetter: application.coverLetter,
-    answers: application.answers,
-  };
-  return { workspace, application, job, packet, currentHash: computePacketHash(packet) };
-}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -297,9 +277,9 @@ export function registerBatchTools(server: McpServer): void {
   server.registerTool(
     "approve_batch",
     {
-      title: "Approve every ready application in a batch",
+      title: "Ask the person to approve every ready application in a batch",
       description:
-        "Records a human approval for each ready application in the batch. Requires the current manifest hash and the exact count being approved, so approval cannot silently cover more applications than were reviewed.",
+        "Shows the person the batch's applications and records their answer for each ready one: the decision is theirs, asked through the client's approval dialog, never the model's. Requires the current manifest hash and the exact count being approved, so approval cannot silently cover more applications than were reviewed.",
       inputSchema: {
         batchId: z.string().min(1),
         manifestHash: z.string().min(8).describe("From preview_batch. Binds approval to this exact set of packets."),
@@ -309,57 +289,20 @@ export function registerBatchTools(server: McpServer): void {
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
     handler(async (args: { batchId: string; manifestHash: string; expectedCount: number; note?: string }) => {
-      const workspace = getWorkspace();
-      const batch = getBatch(workspace.db, args.batchId);
-      if (!batch) throw new AppError("batch_not_found", `no batch ${args.batchId}`);
-
-      const ready = listBatchItems(workspace.db, batch.id, "ready");
-      const currentManifest = computeManifestHash(ready);
-
-      if (args.manifestHash !== currentManifest) {
-        throw new AppError(
-          "manifest_mismatch",
-          `manifest hash does not match the current batch contents (current: ${currentManifest}). Re-run preview_batch and approve the current manifest.`,
-        );
-      }
-      if (args.expectedCount !== ready.length) {
-        throw new AppError(
-          "count_mismatch",
-          `batch contains ${ready.length} ready application(s) but expectedCount was ${args.expectedCount}. Confirm the real number before approving.`,
-        );
-      }
-
-      let approved = 0;
-      for (const item of ready) {
-        const { application, currentHash } = packetFor(item.applicationId);
-        if (currentHash !== item.packetHash) {
-          setBatchItemState(workspace.db, batch.id, item.applicationId, "needs_human", "content changed after preparation");
-          continue;
-        }
-        recordApproval(workspace.db, {
-          id: newId("apr"),
-          applicationId: application.id,
-          packetHash: currentHash,
-          decision: "approved",
-          note: args.note ?? `batch ${batch.id}`,
+      checkBatchManifest(args.batchId, args.manifestHash, args.expectedCount);
+      const yes = await askPerson(
+        server,
+        batchQuestion(args.batchId),
+        `--batch ${args.batchId} ${args.manifestHash} ${args.expectedCount}`,
+      );
+      if (!yes) {
+        return ok({
+          batchId: args.batchId,
+          approved: 0,
+          nextStep: "The person did not approve this batch. Ask what to change; nothing was recorded.",
         });
-        saveApplication(workspace.db, {
-          ...application,
-          packetHash: currentHash,
-          status: "approved",
-          approvedAt: nowIso(),
-        });
-        approved += 1;
       }
-
-      setBatchStatus(workspace.db, batch.id, "approved", nowIso(), args.note ?? "");
-      appendEvent(workspace.db, "batch.approved", batch.id, { approved });
-
-      return ok({
-        batchId: batch.id,
-        approved,
-        nextStep: `Run submit_batch for ${batch.id}. Submission respects the campaign mode, daily limit and pacing.`,
-      });
+      return ok(recordBatchApproval(args.batchId, args.manifestHash, args.expectedCount, args.note ?? ""));
     }),
   );
 

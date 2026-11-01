@@ -1,5 +1,6 @@
 import type { Company } from "../domain/campaign.js";
 import type { CompensationRange, Job, WorkplaceType } from "../domain/job.js";
+import { decodeEntitiesOnce } from "../text/html.js";
 import { AppError } from "../util/errors.js";
 import { fetchJson, fetchText } from "./http.js";
 import { asString, epochToIso, normalizeJob } from "./normalize.js";
@@ -126,4 +127,54 @@ export async function fetchLeverApplyPage(applyUrl: string): Promise<string> {
   }
   if (!url.pathname.endsWith("/apply")) url.pathname = `${url.pathname.replace(/\/$/, "")}/apply`;
   return fetchText(url.toString());
+}
+
+/** A Lever apply page as data: its named inputs, and its custom question cards. */
+export type LeverApplyForm = {
+  inputs: Array<{ name: string; required: boolean }>;
+  cards: Array<{ id: string; title: string; fields: Array<Record<string, unknown>> }>;
+};
+
+/** One attribute's value. It must start its own token: `data-name` is not `name`. */
+function attribute(tag: string, name: string): string | undefined {
+  const match = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
+  return match ? (match[1] ?? match[2]) : undefined;
+}
+
+/** A `required` attribute of its own, or aria-required="true"; aria-required="false" is not one. */
+function isRequired(tag: string): boolean {
+  return /\srequired(?=[\s=/>]|$)/i.test(tag) || attribute(tag, "aria-required")?.toLowerCase() === "true";
+}
+
+/**
+ * Reads a Lever apply page. Custom questions come from each card's
+ * `baseTemplate`, a hidden input whose value is the card's JSON definition;
+ * every other named input is reported with whether it is required.
+ */
+export function parseLeverApplyPage(page: string): LeverApplyForm {
+  const form: LeverApplyForm = { inputs: [], cards: [] };
+  for (const tag of page.match(/<(?:input|textarea)\b[^>]*>/gi) ?? []) {
+    const name = attribute(tag, "name");
+    if (!name) continue;
+    const card = /^cards\[([^\]]+)\]\[baseTemplate\]$/.exec(name)?.[1];
+    if (!card) {
+      form.inputs.push({ name, required: isRequired(tag) });
+      continue;
+    }
+    try {
+      const template = JSON.parse(decodeEntitiesOnce(attribute(tag, "value") ?? "")) as { text?: unknown; fields?: unknown };
+      const fields = Array.isArray(template.fields)
+        ? template.fields.filter((field): field is Record<string, unknown> => typeof field === "object" && field !== null)
+        : [];
+      form.cards.push({ id: card, title: String(template.text ?? "").trim().replace(/:$/, ""), fields });
+    } catch {
+      // A card whose definition is not JSON asks nothing that can be drafted.
+    }
+  }
+  return form;
+}
+
+/** The posting's apply form, read before the browser opens. */
+export async function fetchLeverApplicationForm(applyUrl: string): Promise<LeverApplyForm> {
+  return parseLeverApplyPage(await fetchLeverApplyPage(applyUrl));
 }

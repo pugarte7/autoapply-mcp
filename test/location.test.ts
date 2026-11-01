@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { allLocationClasses, analyzeLocation, refineRemoteScopeFromTitle } from "../src/ranking/location.js";
+import { allLocationClasses, analyzeLocation, jobLocationClasses, refineRemoteScopeFromTitle } from "../src/ranking/location.js";
 import { CompanySchema } from "../src/domain/campaign.js";
 import { normalizeJob } from "../src/sources/normalize.js";
 
@@ -171,7 +171,7 @@ describe("analyzeLocation", () => {
 
   it.each(["Rotterdam, NL", "Amsterdam, NL"])(
     "does not mistake the country shorthand in %s for a Canadian province", (value) => {
-      expect(analyzeLocation([value])).toMatchObject({ locationClass: "europe", country: "unknown" });
+      expect(analyzeLocation([value])).toMatchObject({ locationClass: "europe", country: "NL" });
     },
   );
 
@@ -229,12 +229,21 @@ describe("analyzeLocation", () => {
 });
 
 describe("Spain and Europe", () => {
+  it("reads every office a single string lists", () => {
+    expect(allLocationClasses(["San Francisco, CA; Madrid, Spain"])).toEqual(["bay-area", "spain"]);
+    expect(allLocationClasses(["Madrid | Barcelona"])).toEqual(["spain"]);
+    expect(jobLocationClasses({ locationClass: "bay-area", locationsRaw: ["San Francisco, CA", "Madrid, Spain"], workplaceType: "onsite" }))
+      .toEqual(["bay-area", "spain"]);
+  });
+
   it.each([
     ["Madrid, Madrid, Spain", "spain", "ES"],
     ["Hybrid - Madrid", "spain", "ES"],
     ["La Coruña, España", "spain", "ES"],
     ["Valencia, Spain", "spain", "ES"],
-    ["Paris, France", "europe", "unknown"],
+    ["Paris, France", "europe", "FR"],
+    ["Remote - Germany", "europe", "DE"],
+    ["London, UK", "europe", "GB"],
   ])("places %s", (value, locationClass, country) => {
     expect(analyzeLocation([value])).toMatchObject({ locationClass, country });
   });

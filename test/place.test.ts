@@ -26,6 +26,14 @@ describe("sameCity", () => {
   });
 });
 
+describe("accents", () => {
+  it("match the same place written with or without them", () => {
+    expect(sameLocation("Madrid, ESP", "Madrid, Madrid, España")).toBe(true);
+    expect(sameCity("A Coruna, Galicia, Spain", "A Coruña, Galicia, Spain")).toBe(true);
+    expect(sameCity("Málaga, Andalucía, España", "Malaga, Andalusia, Spain")).toBe(true);
+  });
+});
+
 describe("sameLocation", () => {
   it("still compares regions when both state one", () => {
     expect(sameLocation("Vancouver, BC, CAN", "Vancouver, British Columbia, Canada")).toBe(true);

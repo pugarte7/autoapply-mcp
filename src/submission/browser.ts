@@ -29,6 +29,7 @@ import {
   workdayListsSubmitted,
   type ApprovedAnswerEntry,
   type FieldDescriptor,
+  withKinds,
   type FillPlan,
   type PersonalResolver,
   type NarrativeResolver,
@@ -601,7 +602,7 @@ async function fillFormPage(
   /** The wordings each filled field's answer was approved to be chosen under, by label. */
   statedAs: Map<string, readonly string[]>;
 }> {
-  const fields = (await page.evaluate(COLLECT_FIELDS)) as FieldDescriptor[];
+  const fields = withKinds((await page.evaluate(COLLECT_FIELDS)) as FieldDescriptor[]);
   const empty = {
     plan: { toFill: [], unfilled: [], unmatchedRequired: [], unusedAnswers: [] } as unknown as FillPlan,
     filled: [] as Array<{ label: string; source: string }>,
@@ -1801,10 +1802,8 @@ async function fillControl(
     return;
   }
   if (field.role === "combobox") {
-    // Greenhouse's "Location (City)" picker geocodes what is typed and lists
-    // other towns containing the name; only the approved city itself may go in.
-    const placePicker = field.domId === "candidate-location" || /\(city\)/i.test(field.label);
-    await fillCombobox(page, locator, candidates, placePicker ? (option) => sameCity(option, value) : undefined);
+    const eligible = field.kind === "city" ? (option: string) => sameCity(option, value) : undefined;
+    await fillCombobox(page, locator, candidates, eligible);
     return;
   }
   if (field.type === "select") {
