@@ -1,10 +1,29 @@
-# autoapply-mcp
+# autoapply-mcp: AI job application agent for Greenhouse, Lever, Ashby and Workday
 
-An MCP server that turns a verified candidate profile into a governed job-application pipeline: it discovers postings from public ATS boards, applies hard eligibility gates, scores what survives with quotable evidence, drafts only the answers your profile actually supports, and refuses to submit anything without a recorded human approval.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node.js 22.5+](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen.svg)](https://nodejs.org)
+[![Model Context Protocol](https://img.shields.io/badge/MCP-server-8A2BE2.svg)](https://modelcontextprotocol.io)
 
-It is built for high-volume search **without** becoming a spam bot. Discovery, ranking and form-filling are automated. Judgement, truthfulness and consent are not.
+**autoapply-mcp** is an open-source [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an AI agent such as Claude, Cursor or Codex search for jobs and apply to them for you. It discovers postings on public Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable and Recruitee boards, applies hard eligibility gates, ranks what survives with quotable evidence, drafts only the answers your profile actually supports, and fills the employer's real application form. Nothing is submitted without a recorded human approval.
 
-## What it does
+It is built for high-volume job search **without** becoming a spam bot. Discovery, ranking and form-filling are automated. Judgement, truthfulness and consent are not.
+
+## Contents
+
+- [Features](#features)
+- [Supported job boards](#supported-job-boards)
+- [Design rules](#design-rules)
+- [Quick start](#quick-start)
+- [Configure](#configure)
+- [Use with Claude, Cursor, Codex and other MCP clients](#use-with-claude-cursor-codex-and-other-mcp-clients)
+- [Typical session](#typical-session)
+- [Submission modes](#submission-modes)
+- [What it deliberately does not do](#what-it-deliberately-does-not-do)
+- [Known limitations](#known-limitations)
+- [FAQ](#faq)
+- [Development](#development)
+
+## Features
 
 | Stage | Behaviour |
 |---|---|
@@ -16,6 +35,22 @@ It is built for high-volume search **without** becoming a spam bot. Discovery, r
 | Submit | Manual, assisted or auto - never beyond the mode the campaign permits |
 | Track | Records submissions, outcomes and an append-only audit log |
 
+Location gates understand the US, the Bay Area, Canada, Spain and Europe, on-site and remote.
+
+## Supported job boards
+
+| Applicant tracking system | Job discovery | Employer questions read in advance | Browser form filling and submission |
+|---|---|---|---|
+| Greenhouse | Yes | Yes, from the job board API | Assisted and auto |
+| Lever | Yes | Yes, from the apply page | Assisted and auto |
+| Ashby | Yes | Yes, from the hosted job page | Assisted and auto |
+| Workday | Yes | Read during the assisted run | Assisted and auto, through a candidate account on each employer's tenant |
+| SmartRecruiters | Yes | No | Manual packets only |
+| Workable | Yes | No | Manual packets only |
+| Recruitee | Yes | No | Manual packets only |
+
+Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, Sequoia, YC and Built In SF. See [Additional listing sources](#additional-listing-sources).
+
 ## Design rules
 
 1. **Nothing is invented.** Every drafted answer traces to a profile field or a pre-approved answer. Anything else is handed back to you.
@@ -25,20 +60,24 @@ It is built for high-volume search **without** becoming a spam bot. Discovery, r
 5. **Anti-bot controls are respected.** A detected CAPTCHA aborts the run and hands the application back to you. There is no solving, evading or fingerprint spoofing.
 6. **Destinations are allowlisted.** Submissions only go to hosts the campaign explicitly trusts, over HTTPS.
 
-## Requirements
+## Quick start
+
+Requirements:
 
 - Node.js 22.5 or newer (uses the built-in `node:sqlite`, so there is no native build step)
 - Playwright, only if you want assisted or automatic form filling: `npm install playwright && npx playwright install chromium`
 
-## Install
-
 ```bash
-git clone <your-fork> autoapply-mcp
+git clone https://github.com/pugarte7/autoapply-mcp.git
 cd autoapply-mcp
 npm install
 npm run build
 npm test
+npm run init               # creates ~/.autoapply from the examples
+npm run doctor -- --probe  # validates your config and probes every board
 ```
+
+Then fill in your profile ([Configure](#configure)) and [register the server with your MCP client](#use-with-claude-cursor-codex-and-other-mcp-clients).
 
 ## Configure
 
@@ -141,7 +180,11 @@ Greenhouse emails a one-time code before it accepts a submission and Workday ema
 
 `doctor` reports whether the mailbox is configured. Without it a gated submission stops and you write the code to `<artifacts>/<applicationId>.code` while the run waits. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
 
-## Register with an MCP client
+## Use with Claude, Cursor, Codex and other MCP clients
+
+The server speaks stdio, so it works with any MCP client that runs local servers. All logs go to stderr, so stdout stays clean for the protocol. `AUTOAPPLY_HOME` can be omitted if you use the default `~/.autoapply`.
+
+**Claude Desktop** (`claude_desktop_config.json`) and **Cursor** (`~/.cursor/mcp.json`):
 
 ```json
 {
@@ -155,7 +198,20 @@ Greenhouse emails a one-time code before it accepts a submission and Workday ema
 }
 ```
 
-The server speaks stdio. All logs go to stderr, so stdout stays clean for the protocol. `AUTOAPPLY_HOME` can be omitted if you use the default `~/.autoapply`.
+**Claude Code:**
+
+```bash
+claude mcp add --env AUTOAPPLY_HOME=/absolute/path/to/your/.autoapply autoapply -- node /absolute/path/to/autoapply-mcp/dist/index.js
+```
+
+**Codex** (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.autoapply]
+command = "node"
+args = ["/absolute/path/to/autoapply-mcp/dist/index.js"]
+env = { AUTOAPPLY_HOME = "/absolute/path/to/your/.autoapply" }
+```
 
 For salaries in Spain, connect the `tech-pay-spain` server too: Streamable HTTP at `https://spanishtoptechcompanies.com/mcp`, no sign-in. Its [skill](https://github.com/pugarte7/spanish-top-tech-companies/tree/website/skills/tech-pay-spain) tells agents to apply through this server.
 
@@ -199,7 +255,7 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 ## What it deliberately does not do
 
-- No LinkedIn, Indeed or Wellfound automation. Their terms prohibit it and their anti-bot systems are built to stop it. Use their alerts as leads, then apply through the employer's own board.
+- No LinkedIn Easy Apply, Indeed or Wellfound automation. Their terms prohibit it and their anti-bot systems are built to stop it. Use their alerts as leads, then apply through the employer's own board.
 - No assumption that discovery support grants browser submission support. New ATS integrations remain manual-only, and Workday's account-based flow can still require human intervention.
 - No CAPTCHA solving, proxy rotation or fingerprint evasion.
 - No writing of your resume prose or cover letters. The server supplies structured evidence; your agent writes the words and you approve them.
@@ -211,6 +267,40 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 - Each posting's questions are read before the browser opens: Greenhouse from its job board API, Ashby from the endpoint its hosted job page uses, and Lever from the question definitions embedded in its apply page. Other boards are drafted against a baseline field set and the real form is read during an assisted run.
 - `@modelcontextprotocol/sdk` currently pulls a transitive advisory in `@hono/node-server` affecting its static-file server. This server uses the stdio transport only and never serves static files, so the affected code path is not reachable.
 
+## FAQ
+
+### Can an AI agent apply to jobs for me?
+
+Yes. Connect this server to Claude, Cursor, Codex or another MCP client and the agent can find openings, fill the application and, once you approve the exact packet, submit it. In `assisted` mode it fills the form and you click submit; in `auto` mode it submits by itself, but only to companies you have allowlisted.
+
+### Is this a LinkedIn Easy Apply bot?
+
+No. It applies through the employer's own applicant tracking system (Greenhouse, Lever, Ashby or Workday), which is where most tech companies take applications anyway. LinkedIn, Indeed and Wellfound alerts are still useful as leads.
+
+### Will it send spam applications?
+
+It is designed not to. Postings that fail your location, seniority, salary or sponsorship gates are not drafted unless you deliberately override the gate, every submission needs your approval, and batches honour the size limits and pacing you configure.
+
+### Where is my personal data stored?
+
+On your machine, in `~/.autoapply`: your profile, resumes and a SQLite database. Discovery needs no candidate data, and submissions only go to hosts the campaign allowlists. The AI client you connect sees whatever the tools return to it, as with any MCP server.
+
+### Does it write my cover letter or invent answers?
+
+No. Drafted answers come only from your profile and pre-approved answers. The server supplies structured evidence for a cover letter; your agent writes it and you approve it.
+
+### Does it solve CAPTCHAs?
+
+No. A detected CAPTCHA stops the run and hands the application back to you.
+
+### Does it work for jobs in Europe or Spain?
+
+Yes. Location gates know Spain, Europe and their remote variants alongside the US and Canada. For pay in Spain, the `tech-pay-spain` MCP server gives salaries by company from [Spanish Top Tech Companies](https://spanishtoptechcompanies.com).
+
+### Is it free?
+
+Yes, it is open source under the MIT license. You bring your own MCP client and model.
+
 ## Development
 
 ```bash
@@ -219,8 +309,8 @@ npm test
 npm run coverage
 ```
 
-174 tests cover location classification, compensation parsing, every gate, scoring, the answer policy, resume validation, submission guards, packet hashing, persistence, the ATS adapters and an end-to-end run through a real in-memory MCP client.
+Over 2,000 tests cover location classification, compensation parsing, every gate, scoring, the answer policy, resume validation, submission guards, packet hashing, persistence, the ATS adapters, form fills and submissions against local replicas of Greenhouse, Lever and Ashby in a real Chromium, and an end-to-end run through a real in-memory MCP client.
 
 ## License
 
-MIT
+MIT. Forked from [niragmehta/autoapply-mcp](https://github.com/niragmehta/autoapply-mcp).
