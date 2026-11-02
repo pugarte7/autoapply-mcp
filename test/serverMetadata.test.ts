@@ -51,7 +51,7 @@ describe("server instructions", () => {
   });
 
   it("names the setup, memory, code, rules tools and the prompts", () => {
-    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "remember_answer", "provide_verification_code", "list_pending_gates", "approve_rules", "onboard", "daily_apply"]) {
+    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "load_preset", "remember_answer", "provide_verification_code", "list_pending_gates", "approve_rules", "onboard", "daily_apply"]) {
       expect(instructions).toContain(name);
     }
   });

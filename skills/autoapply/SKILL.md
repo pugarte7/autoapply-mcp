@@ -39,8 +39,11 @@ them by name; otherwise follow the steps below, which are the same.
    For the mailbox, say: "We need an email address to receive the verification
    codes some boards send. You can connect it to me and I do everything
    automatically, or you pass me the codes by hand."
-2. Build the profile from the CV and their answers with `setup_profile`, then
-   `update_campaign`. Store each standing answer with `remember_answer`.
+2. Build the profile from the CV and their answers with `setup_profile`. For a
+   candidate in Spain, call `load_preset` with `preset: "spain"` and
+   `campaign: true`; otherwise apply what `onboarding_questions` lists under
+   `agentFixes`. Then `update_campaign`. Store each standing answer with
+   `remember_answer`.
 3. Read the `autoapply://agenda` resource. Ask for remaining `profileGaps` only
    if the CV cannot fill them, in one message.
 4. `list_rules`, then propose standing rules with `approve_rules`. The person
@@ -49,6 +52,8 @@ them by name; otherwise follow the steps below, which are the same.
 ### Every day: `daily_apply`
 
 1. Read `autoapply://agenda` and `autoapply://lessons`; follow the advice lines.
+   With no companies configured, call `load_preset` first (`spain` for a
+   candidate in Spain).
 2. `discover_jobs`, `list_queue`, pick the best openings within today's budget.
 3. `prepare_application` or `prepare_batch`. Write cover letters and essays only
    from the match report's facts. Fill every answer the profile supports with

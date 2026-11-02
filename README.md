@@ -102,6 +102,8 @@ npm run init
 
 Looking for work in Spain? Run `npm run init -- --preset spain` instead. It seeds a campaign in euros for offices in Spain and remote roles open from Spain or Europe, with tracks titled in English and Spanish, and a company list built from [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com). Without the flag `init` uses `--preset us-canada`, the US and Canada setup it always used. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#spain).
 
+Installed with `npx -y autoapply-mcp`, there is no checkout to run `npm run init` in. The agent loads the same list itself with the `load_preset` tool (`preset: "spain"`, and `campaign: true` to start the campaign from the Spain one when there is none yet); the `onboard` prompt does it for a candidate in Spain. It only adds boards, never touches companies you already listed, and never replaces a campaign. If you prefer files, `npx -y -p autoapply-mcp autoapply-mcp-init --preset spain` seeds the home like `init` does.
+
 ### The profile template
 
 `examples/profile.example.json` holds no personal data, compensation or location preferences. It does carry a bank of 170 recurring application questions, each matched to the wordings employers use:
@@ -312,7 +314,7 @@ No. A detected CAPTCHA is shown to you in the filled browser window, with a noti
 
 ### Does it work for jobs in Europe or Spain?
 
-Yes. Location gates know Spain, Europe and their remote variants alongside the US and Canada, and `npm run init -- --preset spain` sets up a campaign in euros with 89 employers hiring in Spain. For pay in Spain, the `tech-pay-spain` MCP server gives salaries by company from [Spanish Top Tech Companies](https://spanishtoptechcompanies.com).
+Yes. Location gates know Spain, Europe and their remote variants alongside the US and Canada, and `npm run init -- --preset spain` (or the `load_preset` tool, from an npx install) sets up a campaign in euros with 89 employers hiring in Spain. For pay in Spain, the `tech-pay-spain` MCP server gives salaries by company from [Spanish Top Tech Companies](https://spanishtoptechcompanies.com).
 
 ### Is it free?
 

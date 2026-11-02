@@ -4,7 +4,9 @@ import { z, type ZodType } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { draftPathFor, isPlainObject, issuesOf, mergeConfig, readRawJson, writeJsonAtomic } from "../config/configFiles.js";
 import { closeWorkspace, getWorkspace, loadCampaign, type Workspace } from "../config/load.js";
+import { mergeCompanies } from "../config/companies.js";
 import { onboardingQuestions } from "../config/onboarding.js";
+import { PRESET_NAMES, presetCampaign, presetCompanies, type PresetName } from "../config/presets.js";
 import { resolvePaths, type WorkspacePaths } from "../config/paths.js";
 import {
   applyPending,
@@ -98,10 +100,44 @@ function blockedCategories(paths: WorkspacePaths): string[] {
   }
 }
 
+function rawCompanies(paths: WorkspacePaths): Record<string, unknown> | null | undefined {
+  try {
+    return readRawJson(paths.companies);
+  } catch {
+    // A broken companies file is doctor's to report; it is not "no companies".
+    return undefined;
+  }
+}
+
 function stillMissing(paths: WorkspacePaths) {
   const profile = readRawJson(paths.profile) ?? readRawJson(draftPathFor(paths.profile));
   const campaign = readRawJson(paths.campaign) ?? readRawJson(draftPathFor(paths.campaign));
-  return onboardingQuestions(profile, campaign);
+  return onboardingQuestions(profile, campaign, { companies: rawCompanies(paths) });
+}
+
+export type PresetCampaign =
+  | { state: "not_requested" }
+  | { state: "kept"; path: string; note: string }
+  | { state: "written" | "draft"; path: string; validationIssues: string[]; standing: Standing };
+
+/**
+ * Seeds campaign.json from a preset's example, only where the person has no
+ * campaign yet. A campaign.json, valid or not, and a draft update_campaign is
+ * still building are both the person's campaign, and a shipped example never
+ * replaces either. The write goes through saveMerged, so it is validated, kept
+ * as a draft if it does not validate, and anything standing in it is still
+ * asked of the person.
+ */
+async function seedCampaign(server: McpServer, paths: WorkspacePaths, preset: PresetName): Promise<PresetCampaign> {
+  for (const path of [paths.campaign, draftPathFor(paths.campaign)]) {
+    if (existsSync(path)) {
+      return { state: "kept", path, note: "A campaign already exists and load_preset never replaces it. Change it with update_campaign." };
+    }
+  }
+  const profile = readRawJson(paths.profile) ?? readRawJson(draftPathFor(paths.profile));
+  const result = saveMerged<Campaign>(paths.campaign, presetCampaign(preset, profile), CampaignSchema, campaignStandingChanges);
+  const standing = await confirmStanding(server, paths, result.changes);
+  return { state: result.saved === "file" ? "written" : "draft", path: result.path, validationIssues: result.issues, standing };
 }
 
 /** A CV path the ATS will accept: absolute, present, and really a PDF or DOCX. */
@@ -431,5 +467,42 @@ export function registerSetupTools(server: McpServer): void {
       annotations: { readOnlyHint: true },
     },
     handler(async () => ok(stillMissing(resolvePaths()))),
+  );
+  server.registerTool(
+    "load_preset",
+    {
+      title: "Load a shipped company list",
+      description:
+        "Adds the boards of a shipped preset to companies.json (creating it if missing): spain lists employers hiring in Spain or remote from Spain or Europe, us-canada AI, security and infrastructure employers in the US and Canada. Companies already listed, matched by name case-insensitively or by board, are kept exactly as they are, including any set active: false. With campaign: true and no campaign yet, also writes the preset's campaign; an existing campaign is never replaced. Boards are discovery sources only and grant no permission to submit, so this asks nothing of the person.",
+      inputSchema: {
+        preset: z.enum(PRESET_NAMES).describe("spain for a candidate in Spain or working remote from Spain; us-canada for the US and Canada."),
+        campaign: z.boolean().optional().describe("Also seed campaign.json from the preset when there is none yet. Default false."),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    handler(async ({ preset, campaign }: { preset: PresetName; campaign?: boolean }) => {
+      const paths = resolvePaths();
+      const boards = mergeCompanies(paths.companies, presetCompanies(preset));
+      const seeded: PresetCampaign = campaign === true ? await seedCampaign(server, paths, preset) : { state: "not_requested" };
+      const loaded = reload();
+      return ok({
+        preset,
+        companies: {
+          path: boards.path,
+          created: boards.created,
+          added: boards.added.length,
+          alreadyPresent: boards.alreadyPresent,
+          total: boards.total,
+          backup: boards.backup,
+        },
+        campaign: seeded,
+        workspace: loaded.loaded ? { loaded: true, companies: loaded.workspace.companies.length } : loaded,
+        stillMissing: stillMissing(paths),
+        nextStep:
+          seeded.state === "written" || seeded.state === "draft"
+            ? "Adjust the seeded campaign to what the person asked (tracks, locations, floors, seniority) with update_campaign, then run discover_jobs."
+            : "Run discover_jobs once the profile and campaign are saved.",
+      });
+    }),
   );
 }

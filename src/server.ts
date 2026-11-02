@@ -26,7 +26,8 @@ and the person decides only what is theirs alone to decide.
 
 You do these yourself:
   - Setup: build the profile and campaign from the CV and the onboarding answers (setup_profile and update_campaign;
-    onboarding_questions lists what is still missing), then run node dist/cli/doctor.js --probe.
+    onboarding_questions lists what is still missing; load_preset spain adds the company list for a candidate in
+    Spain), then run node dist/cli/doctor.js --probe.
   - Discovery: run discover_jobs, read list_queue and explain_job, and choose the openings that fit. Propose them; do
     not hand the person a list to pick from.
   - Drafting: write the cover letter and every question marked who=agent, essays included, from the match report's

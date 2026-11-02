@@ -1,6 +1,6 @@
 {
   "name": "autoapply-mcp",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "AI job application agent: an MCP server that lets Claude, Cursor or Codex find jobs and apply on Greenhouse, Lever, Ashby and Workday, with hard safety gates and human approval.",
   "keywords": [
     "mcp",
@@ -34,7 +34,8 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "autoapply-mcp": "dist/index.js"
+    "autoapply-mcp": "dist/index.js",
+    "autoapply-mcp-init": "dist/cli/init.js"
   },
   "files": [
     "dist",

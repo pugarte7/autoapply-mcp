@@ -299,6 +299,7 @@ describe("onboarding_questions", () => {
     await start();
     const report = (await call("onboarding_questions")).json();
     expect(report.complete).toBe(false);
+    expect(report.agentFixes).toEqual([expect.objectContaining({ gap: "no companies configured", fix: { tool: "load_preset", arguments: {} } })]);
     expect(report.groups.map((group: any) => group.title)).toEqual(
       expect.arrayContaining(["About you", "Your CV", "Work authorization", "Pay", "What you are looking for"]),
     );
@@ -313,5 +314,50 @@ describe("onboarding_questions", () => {
     const report = (await call("onboarding_questions")).json();
     expect(report.message).toMatch(/Since which year have you used each of these professionally: Python, Open Policy Agent/);
     expect(report.message).toMatch(/Earliest start date/);
+  });
+});
+
+describe("load_preset", () => {
+  it("creates companies.json, seeds the campaign, reloads, and asks the person nothing", async () => {
+    const { shown } = await start({ files: { profile: makeProfile() } });
+    rmSync(join(home, "companies.json"));
+    const result = (await call("load_preset", { preset: "spain", campaign: true })).json();
+    const shipped = readJson("companies.json").companies as unknown[];
+    expect(result.companies).toMatchObject({ created: true, added: shipped.length, alreadyPresent: 0, total: shipped.length });
+    expect(result.campaign.state).toBe("written");
+    expect(readJson("campaign.json").locations.allow).toContain("spain");
+    // Pointed at the fictional profile's own resume rather than the example's.
+    const resumeIds = new Set((readJson("campaign.json").tracks as Array<{ resumeId: string }>).map((track) => track.resumeId));
+    expect([...resumeIds]).toEqual([makeProfile().resumes.find((resume) => resume.isDefault)!.id]);
+    expect(result.workspace).toEqual({ loaded: true, companies: shipped.length });
+    expect(getWorkspace().companies).toHaveLength(shipped.length);
+    expect(shown).toEqual([]);
+    expect(result.stillMissing.agentFixes).toEqual([]);
+
+    const again = (await call("load_preset", { preset: "spain", campaign: true })).json();
+    expect(again.companies).toMatchObject({ added: 0, alreadyPresent: shipped.length, backup: null });
+    expect(again.campaign.state).toBe("kept");
+  });
+
+  it("never replaces an existing campaign and leaves the person's boards alone", async () => {
+    await start({ files: { profile: makeProfile(), campaign: makeCampaign() } });
+    const before = readFileSync(join(home, "campaign.json"), "utf8");
+    const mine = { name: "abacum", ats: "ashby", board: "abacum-own", active: false };
+    writeFileSync(join(home, "companies.json"), JSON.stringify({ version: 1, companies: [mine] }));
+    const result = (await call("load_preset", { preset: "spain", campaign: true })).json();
+    expect(result.campaign.state).toBe("kept");
+    expect(readFileSync(join(home, "campaign.json"), "utf8")).toBe(before);
+    expect(result.companies.alreadyPresent).toBe(1);
+    expect(readJson("companies.json").companies[0]).toEqual(mine);
+  });
+
+  it("leaves the campaign alone unless asked, and keeps a draft update_campaign is building", async () => {
+    await start({ files: { profile: makeProfile() } });
+    expect((await call("load_preset", { preset: "spain" })).json().campaign).toEqual({ state: "not_requested" });
+    expect(existsSync(join(home, "campaign.json"))).toBe(false);
+    writeFileSync(join(home, "campaign.draft.json"), JSON.stringify({ version: 1, name: "mine" }));
+    const result = (await call("load_preset", { preset: "spain", campaign: true })).json();
+    expect(result.campaign.state).toBe("kept");
+    expect(existsSync(join(home, "campaign.json"))).toBe(false);
   });
 });

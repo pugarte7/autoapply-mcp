@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { resolvePaths, type WorkspacePaths } from "../config/paths.js";
+import { DEFAULT_PRESET, isPresetName, PACKAGE_ROOT, PRESETS, type PresetName } from "../config/presets.js";
 import { toErrorMessage } from "../util/errors.js";
 
 /**
@@ -22,36 +23,7 @@ import { toErrorMessage } from "../util/errors.js";
  * This is a CLI, so writing to stdout is correct here.
  */
 
-const here = dirname(fileURLToPath(import.meta.url));
-// dist/cli/init.js (or src/cli/init.ts under test) -> repository root
-const repoRoot = resolve(here, "..", "..");
-
-/**
- * A preset is a campaign and the company list it was written for. They are
- * chosen together because they only make sense together: the Spain campaign
- * admits postings in Spain and remote in Europe, in euros, and the US/Canada
- * list has almost none, so mixing them gives a campaign that discovers nothing.
- *
- * us-canada stays the default so `init` with no flag does what it always did.
- * No default is guessed from the profile: init runs before the profile is
- * written, and a guess would be wrong for every person who has not filled it in.
- */
-export const PRESETS = {
-  "us-canada": {
-    campaign: "examples/campaign.example.json",
-    companies: "presets/ai-security-us-canada.json",
-  },
-  spain: {
-    campaign: "examples/campaign.spain.example.json",
-    companies: "presets/spain.json",
-  },
-} as const;
-export type PresetName = keyof typeof PRESETS;
-export const DEFAULT_PRESET: PresetName = "us-canada";
-
-export function isPresetName(value: string): value is PresetName {
-  return Object.hasOwn(PRESETS, value);
-}
+export { DEFAULT_PRESET, isPresetName, PRESETS, type PresetName };
 
 type Seed = { target: string; source: string; label: string };
 
@@ -70,7 +42,7 @@ function copySeed(seed: Seed): { ok: boolean; detail: string } {
 export type InitResult = { ok: boolean; lines: string[] };
 
 /** Seeds a home from one preset. Exported so the copy rules are tested without spawning the CLI. */
-export function initHome(paths: WorkspacePaths, preset: PresetName, root: string = repoRoot): InitResult {
+export function initHome(paths: WorkspacePaths, preset: PresetName, root: string = PACKAGE_ROOT): InitResult {
   const chosen = PRESETS[preset];
   const seeds: Seed[] = [
     { target: paths.profile, source: join(root, "examples", "profile.example.json"), label: "examples/profile.example.json" },
