@@ -308,4 +308,19 @@ describe("onboarding_questions", () => {
     expect(report.message).toMatch(/Since which year have you used each of these professionally: Python, Open Policy Agent/);
     expect(report.message).toMatch(/Earliest start date/);
   });
+
+  it("asks once whether required privacy notices may be accepted, outside the answer-bank list", async () => {
+    const profile = makeProfile({
+      answers: [
+        { key: "acknowledgement", label: "I acknowledge and agree", patterns: ["i acknowledge"], answer: "", allowAutoFill: true },
+      ],
+    });
+    await start({ files: { profile, campaign: makeCampaign() } });
+    const report = (await call("onboarding_questions")).json();
+    const asked = report.groups.flatMap((group: any) => group.questions);
+    expect(asked).toContainEqual(expect.objectContaining({ field: "answers.acknowledgement" }));
+    expect(asked.find((entry: any) => entry.field === "answers.acknowledgement").optional).not.toBe(true);
+    expect(report.message).toMatch(/privacy notice/);
+    expect(report.message).not.toMatch(/Saved questions with no answer yet[^\n]*I acknowledge and agree/);
+  });
 });

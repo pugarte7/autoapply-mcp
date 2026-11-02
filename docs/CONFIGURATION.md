@@ -130,7 +130,7 @@ Pre-approved answers to recurring questions:
 
 `whenNoDecline` applies to a declined self-identification answer (gender, race, Hispanic or Latino, and so on), on a bank entry or on a `personal.demographics` field. Every decline wording the form offers is still tried first. The stored value is selected only when the question is required and offers no way to decline, such as a gender list of just "Male" and "Female". Without it, such a form stops for you.
 
-The shipped template carries 170 entries, each with a `note` explaining it:
+The shipped template carries 169 entries, each with a `note` explaining it:
 
 - An entry with an answer is a standing decision.
 - A blank `answer` means you are asked every time a form needs it. An application only waits on a question when that question is required.
@@ -278,7 +278,7 @@ Rebuild it with `npm run preset:spain`. The script reads the site's published ag
 - `seniority` keeps the defaults, which reject `junior` titles. If you are a junior engineer, move `junior` from `reject` to `allow` and lower the floor; `Becario`/`prácticas` internships stay excluded by title either way.
 - `submission.allowedAtsDomains` adds `jobs.eu.lever.co`, where EU-hosted Lever boards take applications. A fifth of the Spain boards are Workday (Airbus, BBVA, Repsol and others), where the agent's browser needs an account on each employer's tenant. The rest of `submission` matches the US and Canada example: an empty `allowedCompanies`, so any company that passes the gates may be submitted to.
 
-**Profile.** The same `examples/profile.example.json` serves Spain; its US-specific questions are blank and simply asked if a form shows them. Set `compensation.currency` to `EUR`, and list `ES` (and every other EU or EEA country if you are an EU citizen, who may work in all of them without a permit) in `workAuthorization.authorizedIn` and `noSponsorshipRequiredIn`. The pre-answered privacy and data-processing consents cover GDPR consent checkboxes worded in English. A form that asks in Spanish (`tratamiento de mis datos personales`, `política de privacidad`) is put to you instead, unless you add those wordings to the `privacy-consent` and `data-processing-consent` patterns.
+**Profile.** The same `examples/profile.example.json` serves Spain; its US-specific questions are blank and simply asked if a form shows them. Set `compensation.currency` to `EUR`, and list `ES` (and every other EU or EEA country if you are an EU citizen, who may work in all of them without a permit) in `workAuthorization.authorizedIn` and `noSponsorshipRequiredIn`. The privacy and data-processing consents a form requires, in English or Spanish (`tratamiento de mis datos personales`, `política de privacidad`), match the `acknowledgement` entry, which starts blank: you are asked once whether they may be accepted for you. Optional consents (`bolsa de talento`, future openings, marketing) match `optional-consent` and are declined.
 
 ## Career sites: Google, Meta, Amazon and Apple
 

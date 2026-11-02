@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { draftAnswers, unresolvedRequired, type FormQuestion } from "../src/drafting/answers.js";
 import { classifyQuestion, questionCore } from "../src/drafting/blockedQuestions.js";
@@ -517,16 +518,40 @@ describe("authorized narratives on essay questions", () => {
 });
 
 describe("sole consent option", () => {
+  // The person said once that required notices may be accepted for them.
+  const accepting = makeProfile({
+    answers: [
+      {
+        key: "acknowledgement",
+        label: "I acknowledge and agree",
+        patterns: ["i acknowledge"],
+        answer: "Yes",
+        allowAutoFill: true,
+      },
+    ],
+  });
+
   it("auto-selects a required choice offering only an acknowledgement", () => {
     const q = question("Point of Data Transfer", {
       required: true,
       type: "multi_value_single_select",
       options: ["I Acknowledge"],
     });
-    const { answers } = draftAnswers([q], profile, campaign);
+    const { answers } = draftAnswers([q], accepting, campaign);
     expect(answers[0]?.requiresHuman).toBe(false);
     expect(answers[0]?.answer).toBe("I Acknowledge");
     expect(unresolvedRequired([q], answers)).toEqual([]);
+  });
+
+  it("leaves a lone privacy acknowledgement to the person until they have said yes", () => {
+    const q = question("Please review and acknowledge our Candidate Privacy Notice", {
+      required: true,
+      type: "multi_value_single_select",
+      options: ["I acknowledge"],
+    });
+    const { answers } = draftAnswers([q], profile, campaign);
+    expect(answers[0]?.requiresHuman).toBe(true);
+    expect(answers[0]?.answer).toBe("");
   });
 
   it("still blocks a single option that is a real choice, not a consent", () => {
@@ -558,7 +583,7 @@ describe("sole consent option", () => {
       type: "multi_value_single_select",
       options: ["I acknowledge that I have read and understood Roblox's Job Applicant Privacy Notice."],
     });
-    const { answers } = draftAnswers([q], profile, campaign);
+    const { answers } = draftAnswers([q], accepting, campaign);
     expect(answers[0]?.requiresHuman).toBe(false);
     expect(answers[0]?.answer).toBe(
       "I acknowledge that I have read and understood Roblox's Job Applicant Privacy Notice.",
@@ -1216,5 +1241,24 @@ describe("a field labelled only Name", () => {
   it("takes the full name, as Ashby's system name field asks", () => {
     const [answer] = draftAnswers([question("Name", { key: "_systemfield_name", required: true })], profile, campaign).answers;
     expect(answer).toMatchObject({ answer: "Alex Candidate", source: "profile", requiresHuman: false });
+  });
+});
+
+describe("the shipped profile's consents", () => {
+  const example = ProfileSchema.parse(
+    JSON.parse(readFileSync(new URL("../examples/profile.example.json", import.meta.url), "utf8")),
+  );
+
+  it("asks the person before accepting a privacy notice, in English or Spanish", () => {
+    for (const label of ["I have read and accept the candidate privacy notice", "Acepto la política de privacidad"]) {
+      const { answers } = draftAnswers([question(label, { required: true, type: "boolean" })], example, campaign);
+      expect(answers[0]?.requiresHuman, label).toBe(true);
+    }
+  });
+
+  it("declines an optional talent-pool consent", () => {
+    const q = question("Keep my details in your talent pool for future opportunities", { required: false, type: "boolean" });
+    const { answers } = draftAnswers([q], example, campaign);
+    expect(answers[0]).toMatchObject({ answer: "No", requiresHuman: false });
   });
 });

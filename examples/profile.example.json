@@ -605,22 +605,6 @@
       "note": "Location or workplace preference. Blank, so you are asked; fill in your answer once and it is used on every application."
     },
     {
-      "key": "privacy-consent",
-      "label": "Privacy notice acknowledgement",
-      "patterns": [
-        "candidate privacy",
-        "privacy policy",
-        "privacy notice",
-        "processing of my personal data",
-        "data privacy notice",
-        "consent to",
-        "acknowledge and agree"
-      ],
-      "answer": "Yes",
-      "allowAutoFill": true,
-      "note": "Accepts the employer's privacy notice, which an application cannot be submitted without."
-    },
-    {
       "key": "arbitration-receipt",
       "label": "Confirm receipt of arbitration agreement",
       "patterns": [
@@ -864,14 +848,6 @@
       "note": "The threshold differs by posting, so it is asked whenever experience[] cannot settle it."
     },
     {
-      "key": "data-processing-consent",
-      "label": "Processing of personal data",
-      "patterns": ["processing of personal data", "process my personal data", "data processing"],
-      "answer": "Acknowledge/Confirm",
-      "allowAutoFill": true,
-      "note": "Pre-answered consent or acknowledgement. Review it before your first run; set allowAutoFill to false to decide per application instead."
-    },
-    {
       "key": "relocation-assistance",
       "label": "Do you require relocation assistance",
       "patterns": ["require relocation assistance", "need relocation assistance", "relocation assistance"],
@@ -967,11 +943,46 @@
         "information i have provided is accurate",
         "certify that the information",
         "confirm that the information",
-        "consent to the processing"
+        "consent to the processing",
+        "candidate privacy",
+        "data privacy notice",
+        "processing of my personal data",
+        "processing of personal data",
+        "process my personal data",
+        "política de privacidad",
+        "politica de privacidad",
+        "tratamiento de mis datos",
+        "tratamiento de datos personales",
+        "protección de datos",
+        "proteccion de datos"
       ],
-      "answer": "Yes",
+      "answer": "",
       "allowAutoFill": true,
-      "note": "Catch-all that answers Yes to 'I acknowledge / I agree / I certify' checkboxes. A more specific entry with a longer matching pattern still wins, which is how arbitration, class-action and jury-trial waivers are routed to arbitration-receipt and always asked. Review it before your first run."
+      "note": "Yours to give: the privacy notice, data-processing consent and 'I acknowledge / I certify' boxes a form requires. Blank, so you are asked once: answer Yes and they are accepted for you on every application. Arbitration and other waivers have their own entry and are always asked. Optional consents are declined: see optional-consent."
+    },
+    {
+      "key": "optional-consent",
+      "label": "Optional consents: talent pool, future openings, marketing",
+      "patterns": [
+        "talent pool",
+        "talent community",
+        "future opportunities",
+        "future job opportunities",
+        "personal data for future opportunities",
+        "datos para futuros procesos",
+        "retain my personal data",
+        "keep my personal data",
+        "keep my data on file",
+        "marketing communications",
+        "newsletter",
+        "bolsa de talento",
+        "futuros procesos",
+        "futuras ofertas",
+        "comunicaciones comerciales"
+      ],
+      "answer": "No",
+      "allowAutoFill": true,
+      "note": "Consents an application does not need are declined unless you change this answer to Yes."
     },
     {
       "key": "proudest-achievement",
@@ -1559,9 +1570,9 @@
         "consent to a background check",
         "are you willing to complete a background check"
       ],
-      "answer": "Yes",
+      "answer": "",
       "allowAutoFill": true,
-      "note": "Agrees to a background check, which most offers require."
+      "note": "Yours to give: consent to a background check. Blank, so you are asked once and the answer is reused."
     },
     {
       "key": "right-to-work-documentation",
@@ -2379,17 +2390,17 @@
       "key": "background-check-consent",
       "label": "Background Check Consent",
       "patterns": ["background check consent"],
-      "answer": "Yes",
+      "answer": "",
       "allowAutoFill": true,
-      "note": "Agrees to a background check, which most offers require."
+      "note": "Yours to give: consent to a background check. Blank, so you are asked once and the answer is reused."
     },
     {
       "key": "ai-evaluation-consent",
       "label": "Consent to the use of AI for evaluating my candidacy",
       "patterns": ["consenting to the use of ai for evaluating my candidacy"],
-      "answer": "Yes",
+      "answer": "",
       "allowAutoFill": true,
-      "note": "Consents to the employer using AI to evaluate your application. Set the answer to No if you would rather not."
+      "note": "Yours to give: whether the employer may use AI to evaluate your application. Blank, so you are asked once and the answer is reused."
     },
     {
       "key": "outstanding-work-examples",
