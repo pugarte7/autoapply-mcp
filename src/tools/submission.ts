@@ -11,6 +11,7 @@ import { appendEvent } from "../db/repositories/events.js";
 import { applicationCountsByCompany, getEvaluation } from "../db/repositories/jobs.js";
 import { applicationQuestion, askPerson, packetFor, recordApplicationDecision } from "../submission/approvals.js";
 import { runApplicationForm } from "../submission/browser.js";
+import { captchaNotifierFor, captchaWaitSecondsInput } from "../submission/captchaHandoff.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
 import { renderPacketPreview } from "../submission/packet.js";
@@ -100,10 +101,11 @@ export function registerSubmissionTools(server: McpServer): void {
           .describe(
             "Hold the browser at a verification gate for this long while waiting for the code to be written to <artifacts>/<applicationId>.code. A code cannot be carried between runs, so this is the only way an automated submission clears the gate. With a verification inbox configured, it also bounds the wait for the link Workday emails to verify a candidate account.",
           ),
+        captchaWaitSeconds: captchaWaitSecondsInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    handler(async (args: { applicationId: string; mode?: "manual" | "assisted" | "auto"; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number }) => {
+    handler(async (args: { applicationId: string; mode?: "manual" | "assisted" | "auto"; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number; captchaWaitSeconds?: number }) => {
       const { workspace, application, job, packet, currentHash } = packetFor(args.applicationId);
       const mode = args.mode ?? "manual";
       const approval = latestApproval(workspace.db, application.id);
@@ -160,6 +162,8 @@ export function registerSubmissionTools(server: McpServer): void {
         verificationCode: args.verificationCode,
         codeWaitMs: (args.waitForCodeSeconds ?? 0) * 1000,
         codeFilePath: join(workspace.paths.artifacts, `${application.id}.code`),
+        captchaWaitSeconds: args.captchaWaitSeconds,
+        notifyPerson: captchaNotifierFor(server),
       });
 
       if (result.status === "submitted") {

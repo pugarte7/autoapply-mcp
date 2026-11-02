@@ -154,14 +154,34 @@ Job descriptions, careers pages and form labels are third-party input. The serve
 
 ## Anti-bot controls
 
-If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the browser run aborts, captures a screenshot and marks the application `needs_human`. There is no solving, bypassing, proxying or fingerprint spoofing, and none will be added.
+If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the person solves it, not the server. There is no solving, bypassing, proxying or fingerprint spoofing, no solver service, and none will be added.
+
+In a headed run the browser keeps the filled form open, brings its window to the
+front, and tells the person: a macOS notification, plus an MCP logging message
+so the agent can say so in the conversation. It then checks once a second until
+the challenge frames are gone (and, for a challenge raised by the submit click,
+until the page no longer asks for one), for at most `captchaWaitSeconds`
+(default 180, at most 900, per challenge). Once the challenge is cleared the run
+carries on where it stopped: it finishes filling, re-checks the choices it made,
+and clicks submit only if submission was requested and every guard already
+passed. If the time runs out, or the window is closed, the run aborts as it
+always did: it captures a screenshot and the application is marked
+`needs_human`. The result reports `captchaHandedOff: true` and
+`captchaHandoffSeconds` whenever a challenge was handed over. `captchaWaitSeconds:
+0` turns the handoff off.
+
+A headless run cannot show anyone a challenge. When it meets one it stops,
+without marking anything `needs_human`, and the same application is filled again
+once in a visible browser, where the challenge is handed over as above if it
+appears again. That retry only happens where a display is plausibly there (macOS,
+or Linux with `DISPLAY` set); otherwise the headless run aborts as before.
 
 Challenge detection checks every matching iframe, not just the first one, because
 providers may retain hidden frames alongside a visible puzzle. The browser
 rechecks after uploads, while filling, before reporting a prepared form, and
 immediately before a submit click. A late challenge must not be reported as a
 successfully prepared form. Hidden frames and passive badges alone are not
-interactive challenges.
+interactive challenges, so they are never handed over either.
 
 Requests are throttled per host, retried with backoff only on 429 and 5xx, and identify themselves honestly through the User-Agent.
 

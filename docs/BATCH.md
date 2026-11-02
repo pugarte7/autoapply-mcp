@@ -255,7 +255,7 @@ additional reviewed batches rather than making a single unbounded batch.
 | `assisted` | Fills each hosted form in a visible browser for you to review and submit |
 | `auto` | Fills and submits. Requires campaign mode `auto` and an allowlisted company |
 
-A CAPTCHA, an unfillable required field, or an off-allowlist redirect marks that application `needs_human` and the batch continues.
+An unfillable required field, an off-allowlist redirect, or a CAPTCHA the person did not solve within `captchaWaitSeconds` marks that application `needs_human` and the batch continues.
 
 ## Realistic volume
 

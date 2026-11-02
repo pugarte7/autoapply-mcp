@@ -25,9 +25,22 @@ type LocatorDouble = {
   waitFor(): Promise<void>;
 };
 
-function browserDouble(trigger: Trigger) {
+/**
+ * `clearAfterPolls` is how many handoff polls the person takes to clear the
+ * challenge; absent, it never clears. Each launch gets a fresh page, as a real
+ * relaunch would, while the events run on across launches.
+ */
+function browserDouble(trigger: Trigger, clearAfterPolls?: number) {
   let challengeVisible = false;
+  let polls = 0;
+  let raised = false;
   let events: string[] = [];
+  // Once per page: a person who cleared the challenge is not shown it again.
+  const raise = () => {
+    if (raised) return;
+    raised = true;
+    challengeVisible = true;
+  };
   const fields: FieldDescriptor[] = [
     { selectorIndex: 0, label: "Full name", type: "text", name: "name", required: true },
     { selectorIndex: 1, label: "Email", type: "email", name: "email", required: true },
@@ -46,16 +59,16 @@ function browserDouble(trigger: Trigger) {
       isEnabled: async () => true,
       fill: async () => {
         events = [...events, "fill"];
-        if (trigger === "fill") challengeVisible = true;
+        if (trigger === "fill") raise();
       },
       setInputFiles: async () => {
         events = [...events, "upload"];
-        if (trigger === "upload") challengeVisible = true;
+        if (trigger === "upload") raise();
       },
       click: async () => { events = [...events, "submit"]; },
       innerText: async () => events.includes("submit") ? "Your application has been submitted." : "Submit your application",
       getAttribute: async (name) => {
-        if (trigger === "submit-inspection" && name === "aria-disabled") challengeVisible = true;
+        if (trigger === "submit-inspection" && name === "aria-disabled") raise();
         return null;
       },
       waitFor: async () => undefined,
@@ -65,17 +78,29 @@ function browserDouble(trigger: Trigger) {
     goto: vi.fn(async () => undefined),
     url: () => "https://jobs.lever.co/captcha-regression/example/apply",
     waitForLoadState: async () => undefined,
-    waitForTimeout: async () => undefined,
+    waitForTimeout: async (ms: number) => {
+      if (!challengeVisible) return;
+      polls += 1;
+      if (clearAfterPolls !== undefined && polls >= clearAfterPolls) challengeVisible = false;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(ms, 5)));
+    },
+    bringToFront: vi.fn(async () => undefined),
     locator,
     evaluate: async (script: unknown) => script === COLLECT_FIELDS ? fields : [],
     screenshot: vi.fn(async (options: { path: string }) => {
-      if (trigger === "screenshot" && options.path.includes("-prepared-")) challengeVisible = true;
+      if (trigger === "screenshot" && options.path.includes("-prepared-")) raise();
     }),
     on: vi.fn(),
     off: vi.fn(),
   };
   const close = vi.fn(async () => undefined);
-  launch.mockResolvedValue({ newContext: async () => ({ newPage: async () => page }), close });
+  const newPage = async () => {
+    challengeVisible = false;
+    raised = false;
+    polls = 0;
+    return page;
+  };
+  launch.mockResolvedValue({ newContext: async () => ({ newPage }), close });
   return { page, close, get events() { return [...events]; } };
 }
 
@@ -112,6 +137,10 @@ afterEach(() => {
   launch.mockReset();
 });
 
+const policy = { ...makeCampaign().submission, allowedAtsDomains: ["jobs.lever.co"] };
+/** A headless run with no screen to hand the challenge to: it aborts, as every run used to. */
+const noDisplay = { headless: true, canShowBrowser: () => false, notifyPerson: () => undefined };
+
 describe("late interactive CAPTCHA guards", () => {
   it.each(["upload", "fill", "screenshot"] as const)(
     "does not report prepared when a later challenge iframe becomes visible after %s",
@@ -120,7 +149,7 @@ describe("late interactive CAPTCHA guards", () => {
       const { packet, directory } = packetFixture();
 
       const result = await runApplicationForm(packet, {
-        submit: false, artifactsDir: directory,
+        submit: false, artifactsDir: directory, ...noDisplay,
         policy: { ...makeCampaign().submission, allowedAtsDomains: ["jobs.lever.co"] },
       });
 
@@ -138,7 +167,7 @@ describe("late interactive CAPTCHA guards", () => {
     const { packet, directory } = packetFixture();
 
     const result = await runApplicationForm(packet, {
-      submit: true, artifactsDir: directory,
+      submit: true, artifactsDir: directory, ...noDisplay,
       policy: { ...makeCampaign().submission, allowedAtsDomains: ["jobs.lever.co"] },
     });
 
@@ -153,7 +182,7 @@ describe("late interactive CAPTCHA guards", () => {
     const { packet, directory } = packetFixture();
 
     const result = await runApplicationForm(packet, {
-      submit: false, artifactsDir: directory,
+      submit: false, artifactsDir: directory, ...noDisplay,
       policy: { ...makeCampaign().submission, allowedAtsDomains: ["jobs.lever.co"] },
     });
 
@@ -161,5 +190,117 @@ describe("late interactive CAPTCHA guards", () => {
     expect(result.captchaDetected).toBe(false);
     expect(result.unmatchedRequired).toEqual([]);
     expect(fake.events).toEqual(["upload", "fill", "fill"]);
+  });
+});
+
+describe("handing a CAPTCHA to the person", () => {
+  it.each(["upload", "fill", "screenshot"] as const)(
+    "keeps a headed run going once the person clears a challenge raised after %s",
+    async (trigger) => {
+      const fake = browserDouble(trigger, 3);
+      const { packet, directory } = packetFixture();
+      const notifyPerson = vi.fn();
+
+      const result = await runApplicationForm(packet, {
+        submit: false, artifactsDir: directory, policy, headless: false, notifyPerson,
+      });
+
+      expect(result.status, result.reason).toBe("prepared");
+      expect(result.captchaHandedOff).toBe(true);
+      expect(result.captchaHandoffSeconds).toBeGreaterThanOrEqual(0);
+      expect(result.captchaDetected).toBe(false);
+      expect(notifyPerson).toHaveBeenCalledOnce();
+      expect(fake.page.bringToFront).toHaveBeenCalledOnce();
+      expect(fake.events.filter((event) => event === "fill")).toHaveLength(2);
+      expect(fake.close).toHaveBeenCalledOnce();
+    },
+  );
+
+  it("clicks submit after the person clears a challenge raised just before the click", async () => {
+    const fake = browserDouble("submit-inspection", 2);
+    const { packet, directory } = packetFixture();
+    const notifyPerson = vi.fn();
+
+    const result = await runApplicationForm(packet, {
+      submit: true, artifactsDir: directory, policy, headless: false, notifyPerson,
+    });
+
+    expect(result.status, result.reason).toBe("submitted");
+    expect(result.captchaHandedOff).toBe(true);
+    expect(fake.events.filter((event) => event === "submit")).toHaveLength(1);
+    expect(notifyPerson).toHaveBeenCalledOnce();
+  });
+
+  it("aborts with the screenshot when the person does not clear it in time", async () => {
+    const fake = browserDouble("fill");
+    const { packet, directory } = packetFixture();
+
+    const result = await runApplicationForm(packet, {
+      submit: true, artifactsDir: directory, policy, headless: false, captchaWaitSeconds: 1, notifyPerson: vi.fn(),
+    });
+
+    expect(result.status).toBe("aborted");
+    expect(result.captchaDetected).toBe(true);
+    expect(result.captchaHandedOff).toBe(true);
+    expect(result.reason).toMatch(/not cleared within 1s/);
+    expect(result.screenshotPath).toContain("-captcha-");
+    expect(fake.events).not.toContain("submit");
+    expect(launch).toHaveBeenCalledOnce();
+  });
+
+  it("aborts at once with a zero wait, as before the handoff existed", async () => {
+    browserDouble("fill");
+    const { packet, directory } = packetFixture();
+    const notifyPerson = vi.fn();
+
+    const result = await runApplicationForm(packet, {
+      submit: false, artifactsDir: directory, policy, headless: false, captchaWaitSeconds: 0, notifyPerson,
+    });
+
+    expect(result).toMatchObject({ status: "aborted", captchaDetected: true });
+    expect(result.captchaHandedOff).toBeUndefined();
+    expect(notifyPerson).not.toHaveBeenCalled();
+  });
+
+  it("redoes a headless run headed, once, and hands the challenge over there", async () => {
+    const fake = browserDouble("upload", 2);
+    const { packet, directory } = packetFixture();
+    const notifyPerson = vi.fn();
+
+    const result = await runApplicationForm(packet, {
+      submit: true, artifactsDir: directory, policy, headless: true, canShowBrowser: () => true, notifyPerson,
+    });
+
+    expect(launch.mock.calls.map(([options]) => (options as { headless: boolean }).headless)).toEqual([true, false]);
+    expect(result.status, result.reason).toBe("submitted");
+    expect(result.captchaHandedOff).toBe(true);
+    expect(notifyPerson).toHaveBeenCalledOnce();
+    expect(fake.events.filter((event) => event === "submit")).toHaveLength(1);
+    expect(fake.close).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry headed a second time when the headed run also gives up", async () => {
+    browserDouble("upload");
+    const { packet, directory } = packetFixture();
+
+    const result = await runApplicationForm(packet, {
+      submit: true, artifactsDir: directory, policy, headless: true, canShowBrowser: () => true,
+      captchaWaitSeconds: 1, notifyPerson: vi.fn(),
+    });
+
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({ status: "aborted", captchaDetected: true, captchaHandedOff: true });
+  });
+
+  it("keeps a headless run's abort when there is no display to show a browser on", async () => {
+    browserDouble("upload", 2);
+    const { packet, directory } = packetFixture();
+    const notifyPerson = vi.fn();
+
+    const result = await runApplicationForm(packet, { submit: true, artifactsDir: directory, policy, ...noDisplay, notifyPerson });
+
+    expect(launch).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ status: "aborted", captchaDetected: true });
+    expect(notifyPerson).not.toHaveBeenCalled();
   });
 });

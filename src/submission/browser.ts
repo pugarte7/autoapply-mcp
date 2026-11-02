@@ -40,6 +40,14 @@ import { waitForResumeProcessing } from "./resumeProcessing.js";
 import { fillLeverLocation } from "./leverLocation.js";
 import { sameCity } from "./place.js";
 import { hasVisibleCaptchaChallenge } from "./captcha.js";
+import {
+  awaitChallengeCleared,
+  captchaWaitMs,
+  displayAvailable,
+  retriesHeaded,
+  systemNotifier,
+  type CaptchaNotifier,
+} from "./captchaHandoff.js";
 import { ashbyEmbedFallbackUrl } from "./ashbyEmbed.js";
 import { workdayDateParts } from "./workdayDates.js";
 import { isTaxCreditOptOutStep, optOutOfTaxCreditAssessment } from "./workdayAssessment.js";
@@ -93,9 +101,10 @@ import {
  * Browser automation for hosted ATS application forms.
  *
  * Playwright is an optional dependency: the rest of the server works without a
- * browser, and this module only loads it on demand. It never solves a CAPTCHA,
- * never leaves the allowlisted host, and only clicks submit when explicitly
- * told to after the approval guards have passed.
+ * browser, and this module only loads it on demand. It never solves a CAPTCHA
+ * (a headed run hands it to the person and waits), never leaves the allowlisted
+ * host, and only clicks submit when explicitly told to after the approval
+ * guards have passed.
  */
 
 type AnyPage = {
@@ -218,6 +227,19 @@ export type BrowserRunOptions = {
    * is absent unless deliberately switched on.
    */
   verificationInbox?: VerificationInboxConfig | null;
+  /**
+   * How long a headed run holds a filled form open for the person to clear an
+   * interactive CAPTCHA before giving up, per challenge. Zero aborts at once,
+   * as every run did before the handoff existed.
+   */
+  captchaWaitSeconds?: number;
+  /** Tells the person a challenge is waiting. Defaults to a macOS notification. */
+  notifyPerson?: CaptchaNotifier;
+  /**
+   * Whether a headed browser can be shown, deciding if a headless run that met
+   * a challenge is redone headed. Injectable because CI has no display.
+   */
+  canShowBrowser?: () => boolean;
 };
 
 export type BrowserRunResult = {
@@ -236,6 +258,10 @@ export type BrowserRunResult = {
   finalUrl: string;
   confirmationText: string;
   captchaDetected: boolean;
+  /** Set when a challenge was handed to the person, whether or not they cleared it. */
+  captchaHandedOff?: true;
+  /** Seconds the run waited on the person, over every handoff. */
+  captchaHandoffSeconds?: number;
 };
 
 /** Runs in the page: tags every form control and returns its descriptor. */
@@ -583,6 +609,7 @@ async function fillFormPage(
   page: AnyPage,
   packet: SubmissionPacket,
   options: BrowserRunOptions,
+  gate: CaptchaGate,
   /**
    * Inside a wizard the page is already known to belong to the application, so
    * the "does this look like a form?" heuristic must not run. It asks for a
@@ -657,10 +684,19 @@ async function fillFormPage(
     const value = answerValueForField(match.field, match.answer!);
     const candidates = optionSearchCandidates(match.field, match.answer!, packet.company);
     try {
-      if (await hasVisibleCaptchaChallenge(page)) {
+      if ((await gate.check(page)) === "blocked") {
         throw new AppError("captcha_required", "Interactive CAPTCHA appeared during form filling");
       }
-      await fillControl(page, locator, match.field, value, candidates, choiceLog);
+      try {
+        await fillControl(page, locator, match.field, value, candidates, choiceLog);
+      } catch (error) {
+        // A challenge raised part-way through a control (Lever's location
+        // lookup checks for one between keystrokes) leaves that one field half
+        // done, so it is redone once the person has cleared the challenge.
+        if (!(error instanceof AppError && error.code === "captcha_required")) throw error;
+        if ((await gate.check(page)) === "blocked") throw error;
+        await fillControl(page, locator, match.field, value, candidates, choiceLog);
+      }
       filled.push({ label: match.field.label, source: match.answer!.source });
       statedAs.set(match.field.label, candidates);
       if (match.field.groupKey) answeredGroups.add(match.field.groupKey);
@@ -705,16 +741,17 @@ async function guardedFillFormPage(
   page: AnyPage,
   packet: SubmissionPacket,
   options: BrowserRunOptions,
+  gate: CaptchaGate,
   knownApplicationPage = false,
 ): Promise<Awaited<ReturnType<typeof fillFormPage>> | BrowserRunResult> {
   try {
-    if (await hasVisibleCaptchaChallenge(page)) return await captureCaptchaAbort(page, packet, options);
-    const result = await fillFormPage(page, packet, options, knownApplicationPage);
-    if (await hasVisibleCaptchaChallenge(page)) return await captureCaptchaAbort(page, packet, options, result.filled);
+    if ((await gate.check(page)) === "blocked") return await gate.abort(page);
+    const result = await fillFormPage(page, packet, options, gate, knownApplicationPage);
+    if ((await gate.check(page)) === "blocked") return await gate.abort(page, result.filled);
     return result;
   } catch (error) {
     if (!(error instanceof AppError) || error.code !== "captcha_required") throw error;
-    return await captureCaptchaAbort(page, packet, options);
+    return await gate.abort(page);
   }
 }
 
@@ -759,9 +796,11 @@ async function runCareerSite(
       packet.applyUrl,
     );
   }
+  // Always headed, so a challenge here can always be handed to the person.
+  const gate = captchaGate(packet, options, true);
   try {
     const page = context.pages()[0] ?? (await context.newPage());
-    return await runCareerSiteApplication({
+    return gate.annotate(await runCareerSiteApplication({
       site,
       page: page as unknown as SitePage,
       packet,
@@ -769,7 +808,7 @@ async function runCareerSite(
       relocationTargets: options.relocationTargets ?? [],
       hooks: {
         fillStep: async () => {
-          const step = await guardedFillFormPage(page, packet, options, true);
+          const step = await guardedFillFormPage(page, packet, options, gate, true);
           if ("status" in step) return step;
           const problems = [
             ...step.plan.unmatchedRequired.map((field) => field.label),
@@ -781,7 +820,7 @@ async function runCareerSite(
         readText: () => readBodyText(page),
         resolveChoice: (label, offered) => resolveChoiceFor(packet, options, label, offered),
       },
-    });
+    }));
   } finally {
     await context.close().catch(() => undefined);
   }
@@ -824,10 +863,41 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
   if (!chromium) throw new AppError("playwright_missing", "Playwright chromium driver unavailable");
 
   mkdirSync(options.artifactsDir, { recursive: true });
-  const timeout = options.timeoutMs ?? 45_000;
   const site = careerSiteFor(packet.applyUrl);
   if (site) return runCareerSite(chromium as unknown as PersistentLauncher, site, packet, options);
-  const browser = await chromium.launch({ headless: options.headless ?? false });
+
+  const headless = options.headless ?? false;
+  const first = await runHostedForm(chromium, packet, options, headless);
+  const challenged = first.status === "aborted" && first.captchaDetected;
+  const display = (options.canShowBrowser ?? displayAvailable)();
+  if (!retriesHeaded({ headless, challenged, retried: false, display })) return first;
+  // The headless abort never reaches the caller, so the application is not
+  // marked needs_human for a challenge the person is about to be shown.
+  logger.info("CAPTCHA in a headless run; filling again in a visible browser so the person can clear it", {
+    url: first.finalUrl,
+  });
+  return runHostedForm(chromium, packet, options, false);
+}
+
+async function runHostedForm(
+  chromium: { launch: (options: unknown) => Promise<AnyBrowser> },
+  packet: SubmissionPacket,
+  options: BrowserRunOptions,
+  headless: boolean,
+): Promise<BrowserRunResult> {
+  const gate = captchaGate(packet, options, !headless);
+  return gate.annotate(await fillHostedForm(chromium, packet, options, headless, gate));
+}
+
+async function fillHostedForm(
+  chromium: { launch: (options: unknown) => Promise<AnyBrowser> },
+  packet: SubmissionPacket,
+  options: BrowserRunOptions,
+  headless: boolean,
+  gate: CaptchaGate,
+): Promise<BrowserRunResult> {
+  const timeout = options.timeoutMs ?? 45_000;
+  const browser = await chromium.launch({ headless });
 
   try {
     const context = await browser.newContext({ acceptDownloads: false });
@@ -846,25 +916,12 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
       return aborted(`page redirected off the allowlist to ${page.url()}`, page.url());
     }
 
-    const pageText = await readBodyText(page);
     // A passive reCAPTCHA v3 badge only leaves "protected by reCAPTCHA" in the
     // page text and needs no human action, so it must not abort a fill-only
-    // (assisted) run. Anything actually interactive still aborts, and a
+    // (assisted) run. Anything actually interactive still stops the run, and a
     // self-submitting run stays strict.
-    const interactiveChallenge = await hasVisibleCaptchaChallenge(page);
-    if (interactiveChallenge || (options.submit && detectCaptcha(pageText))) {
-      const shot = await capture(page, options.artifactsDir, packet.applicationId, "captcha");
-      return {
-        status: "aborted",
-        reason: "anti-bot challenge detected; this application must be completed by a human",
-        filledFields: [],
-        unmatchedRequired: [],
-        unusedAnswers: [],
-        screenshotPath: shot,
-        finalUrl: page.url(),
-        confirmationText: "",
-        captchaDetected: true,
-      };
+    if ((await gate.check(page, { pageText: options.submit })) === "blocked") {
+      return await gate.abort(page, [], "anti-bot challenge detected; this application must be completed by a human");
     }
 
     // Workday hides the form behind an advert, a modal and a sign-in wall, so it
@@ -877,11 +934,20 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     let assessmentAttempts = 0;
     let resumeAttached = false;
     if (isWorkdayUrl(page.url())) {
-      const entry = await enterWorkdayApplication(page, options.accountEmail ?? "", {
-        allowAccountCreation: options.allowAccountCreation ?? false,
-        awaitVerificationLink: workdayVerificationLinkReader(options, page.url()),
-      });
-      if (await hasVisibleCaptchaChallenge(page)) return await captureCaptchaAbort(page, packet, options);
+      const enter = () =>
+        enterWorkdayApplication(page, options.accountEmail ?? "", {
+          allowAccountCreation: options.allowAccountCreation ?? false,
+          awaitVerificationLink: workdayVerificationLinkReader(options, page.url()),
+        });
+      let entry = await enter();
+      const entryCheck = await gate.check(page);
+      if (entryCheck === "blocked") return await gate.abort(page);
+      // A challenge that interrupted the sign-in wall is what stopped the walk
+      // in, so once the person clears it the walk is tried again.
+      if (entryCheck === "solved" && entry.reached !== "form") {
+        entry = await enter();
+        if ((await gate.check(page)) === "blocked") return await gate.abort(page);
+      }
       if (entry.reached !== "form") {
         const shot = await capture(page, options.artifactsDir, packet.applicationId, "workday-entry");
         return {
@@ -943,7 +1009,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
           }
           await attachResume(page, packet.resumePath);
           await page.waitForTimeout(1200);
-          if (await hasVisibleCaptchaChallenge(page)) return await captureCaptchaAbort(page, packet, options, priorFilled);
+          if ((await gate.check(page)) === "blocked") return await gate.abort(page, priorFilled);
           if (await resumeIsAttached(page, packet.resumePath)) {
             resumeAttached = true;
             break;
@@ -970,7 +1036,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
             }
           }
         }
-        const stepFill = await guardedFillFormPage(page, packet, options, true);
+        const stepFill = await guardedFillFormPage(page, packet, options, gate, true);
         if ("status" in stepFill) return { ...stepFill, filledFields: [...priorFilled, ...stepFill.filledFields] };
         await clearPhoneExtension(page);
         // The transient fault can also arrive part-way through a step, after
@@ -1059,7 +1125,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
       await attachResume(page, packet.resumePath);
     }
     await page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => undefined);
-    if (await hasVisibleCaptchaChallenge(page)) return await captureCaptchaAbort(page, packet, options, priorFilled);
+    if ((await gate.check(page)) === "blocked") return await gate.abort(page, priorFilled);
     if (/\.ashbyhq\.com$/i.test(new URL(page.url()).hostname)) {
       await page
         .locator("text=Autofill completed!")
@@ -1072,7 +1138,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     }
     await page.waitForTimeout(1000);
 
-    const pageFill = await guardedFillFormPage(page, packet, options);
+    const pageFill = await guardedFillFormPage(page, packet, options, gate);
     if ("status" in pageFill) return { ...pageFill, filledFields: [...priorFilled, ...pageFill.filledFields] };
     // A page with no inputs is normally a dead posting. After a wizard has
     // already filled and saved earlier pages it is instead the Review page,
@@ -1124,7 +1190,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     const statedAs = new Map([...priorStatedAs, ...pageFill.statedAs]);
     const failedRequired = [...stepFailureList(stepFailures), ...priorFailedRequired, ...pageFill.failedRequired];
 
-    const screenshotPath = await capture(page, options.artifactsDir, packet.applicationId, "prepared");
+    let screenshotPath = await capture(page, options.artifactsDir, packet.applicationId, "prepared");
     const inertIndexes = await inertControlIndexes(
       page,
       plan.unmatchedRequired.map((entry) => entry.selectorIndex),
@@ -1208,8 +1274,12 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
       }
       // A window the person closed during the hold has no challenge left to
       // report; the form was prepared and simply not submitted.
-      const challenged = await hasVisibleCaptchaChallenge(page).catch(() => false);
-      if (challenged) return await captureCaptchaAbort(page, packet, options, filled);
+      const preparedCheck = await gate.check(page).catch((): ChallengeCheck => "clear");
+      if (preparedCheck === "blocked") return await gate.abort(page, filled);
+      // The first screenshot caught the challenge; the record should show the form.
+      if (preparedCheck === "solved") {
+        screenshotPath = await capture(page, options.artifactsDir, packet.applicationId, "prepared");
+      }
       return {
         status: "prepared",
         reason:
@@ -1263,21 +1333,22 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     // work-authorisation answer that the run had verified as set moments
     // earlier. Verify again with nothing left to disturb the form, so what is
     // submitted is what was checked.
-    const lostAtSubmit = await reassertChoices(page, choiceLog);
-    if (lostAtSubmit.length > 0) {
-      for (const label of lostAtSubmit) logger.warn("choice would not hold at submit", { label });
+    const choicesWouldNotHold = (lost: readonly string[]): BrowserRunResult => {
+      for (const label of lost) logger.warn("choice would not hold at submit", { label });
       return {
         status: "aborted",
-        reason: `choice(s) would not stay selected, so nothing was submitted: ${lostAtSubmit.join("; ")}`,
-        filledFields: filled.filter((entry) => !lostAtSubmit.includes(entry.label)),
-        unmatchedRequired: lostAtSubmit,
+        reason: `choice(s) would not stay selected, so nothing was submitted: ${lost.join("; ")}`,
+        filledFields: filled.filter((entry) => !lost.includes(entry.label)),
+        unmatchedRequired: [...lost],
         unusedAnswers: plan.unusedAnswers.map((answer) => answer.label),
         screenshotPath,
         finalUrl: page.url(),
         confirmationText: "",
         captchaDetected: false,
       };
-    }
+    };
+    const lostAtSubmit = await reassertChoices(page, choiceLog);
+    if (lostAtSubmit.length > 0) return choicesWouldNotHold(lostAtSubmit);
 
     // A submit that leaves us on the page is ambiguous: the request may have
     // been rejected by the board, or never sent at all. Recording what the
@@ -1295,9 +1366,19 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     page.on?.("response", onResponse as (payload: never) => void);
 
     const submitState = await describeSubmitControl(page);
-    if (await hasVisibleCaptchaChallenge(page)) {
+    const clickCheck = await gate.check(page);
+    if (clickCheck === "blocked") {
       page.off?.("response", onResponse as (payload: never) => void);
-      return await captureCaptchaAbort(page, packet, options, filled);
+      return await gate.abort(page, filled);
+    }
+    if (clickCheck === "solved") {
+      // Clearing a challenge means clicking inside the form, and the person may
+      // have touched an answer on the way, so what is sent is checked again.
+      const lostInHandoff = await reassertChoices(page, choiceLog);
+      if (lostInHandoff.length > 0) {
+        page.off?.("response", onResponse as (payload: never) => void);
+        return choicesWouldNotHold(lostInHandoff);
+      }
     }
     // The board emails its code the moment this click lands, so this is the
     // only honest measure of that code's age. Reading the clock later - after
@@ -1339,23 +1420,20 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     }
 
     await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
-    const postSubmitText = await waitForSubmissionOutcome(page);
-    page.off?.("response", onResponse as (payload: never) => void);
-    const captchaDetected = detectCaptcha(postSubmitText) || (await hasVisibleCaptchaChallenge(page));
-    if (captchaDetected) {
-      const shot = await capture(page, options.artifactsDir, packet.applicationId, "captcha");
-      return {
-        status: "aborted",
-        reason: "anti-bot challenge activated after submit; this application must be completed by a human",
-        filledFields: filled,
-        unmatchedRequired: [],
-        unusedAnswers: plan.unusedAnswers.map((answer) => answer.label),
-        screenshotPath: shot,
-        finalUrl: page.url(),
-        confirmationText: "",
-        captchaDetected: true,
-      };
+    let postSubmitText = await waitForSubmissionOutcome(page);
+    // The click itself can raise the challenge: an invisible reCAPTCHA that
+    // escalates holds the submission until it is answered. A board that keeps
+    // re-challenging after every clear is not going to accept this run.
+    for (let round = 0; ; round += 1) {
+      const check = await gate.check(page, { pageText: true });
+      if (check === "clear") break;
+      if (check === "blocked" || round >= POST_SUBMIT_HANDOFFS) {
+        page.off?.("response", onResponse as (payload: never) => void);
+        return await gate.abort(page, filled, "anti-bot challenge activated after submit; this application must be completed by a human");
+      }
+      postSubmitText = await outcomeAfterHandoff(page);
     }
+    page.off?.("response", onResponse as (payload: never) => void);
 
     if (!checkUrlAllowed(page.url(), options.policy).allowed) {
       return aborted(`page redirected off the allowlist to ${page.url()}`, page.url());
@@ -1647,10 +1725,36 @@ export async function waitForSubmissionOutcome(
     if (detectSubmissionConfirmation(text, page.url())) return text;
     if (gateIsOutcome && detectVerificationCodeGate(text)) return text;
     if ((await readValidationErrors(page)).length > 0) return readBodyText(page);
+    // A challenge the click raised will not answer itself, and the person it
+    // is handed to should not sit out the rest of the ceiling first.
+    if (detectCaptcha(text) || (await hasVisibleCaptchaChallenge(page).catch(() => false))) return text;
     await page.waitForTimeout(SUBMISSION_OUTCOME_POLL_MS);
     text = await readBodyText(page);
   }
   return text;
+}
+
+/** Challenges cleared after a submit click before the run concludes the board will not take it. */
+const POST_SUBMIT_HANDOFFS = 3;
+
+/**
+ * The outcome once the person has cleared a challenge the submit click raised.
+ * Most boards send the form themselves when the challenge returns its token,
+ * so the outcome is awaited first, for the full ceiling: a second click while
+ * that send is in flight is how an employer gets two applications. Only a page
+ * that shows no outcome and no complaint, which means the held submission
+ * never left, gets one more click.
+ */
+async function outcomeAfterHandoff(page: AnyPage): Promise<string> {
+  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
+  const text = await waitForSubmissionOutcome(page);
+  if (detectSubmissionConfirmation(text, page.url()) || detectVerificationCodeGate(text)) return text;
+  const complaints = await page.evaluate(READ_VALIDATION_ERRORS).catch(() => []);
+  if (Array.isArray(complaints) && complaints.length > 0) return text;
+  if (await hasVisibleCaptchaChallenge(page).catch(() => false)) return text;
+  if (!(await clickSubmit(page))) return text;
+  await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
+  return waitForSubmissionOutcome(page);
 }
 
 function aborted(reason: string, finalUrl: string): BrowserRunResult {  return {
@@ -2653,15 +2757,62 @@ async function readValidationErrors(page: AnyPage): Promise<string[]> {
   return [];
 }
 
-async function captureCaptchaAbort(
-  page: AnyPage,
-  packet: SubmissionPacket,
-  options: BrowserRunOptions,
-  filledFields: BrowserRunResult["filledFields"] = [],
-): Promise<BrowserRunResult> {
-  const screenshotPath = await capture(page, options.artifactsDir, packet.applicationId, "captcha");
-  return { ...aborted("interactive CAPTCHA detected; a human must complete this application", page.url()),
-    filledFields, screenshotPath, captchaDetected: true };
+/**
+ * "clear": no challenge on the page. "solved": there was one and the person
+ * cleared it, so the run carries on. "blocked": it is still there, and the run
+ * must stop through `abort`.
+ */
+type ChallengeCheck = "clear" | "solved" | "blocked";
+
+/**
+ * One run's handling of interactive challenges, shared by every place that
+ * looks for one: after uploads, while filling, before reporting prepared,
+ * before the submit click and after it. Detection is unchanged; hidden frames
+ * and passive badges are still not challenges. What changed is the answer to a
+ * visible one in a headed run: the person is asked to clear it in the open
+ * window, and the run waits for them instead of throwing the filled form away.
+ */
+type CaptchaGate = {
+  /** `pageText` also counts active challenge copy, which only a submitting run treats as a challenge. */
+  check: (page: AnyPage, options?: { pageText?: boolean }) => Promise<ChallengeCheck>;
+  abort: (page: AnyPage, filled?: BrowserRunResult["filledFields"], reason?: string) => Promise<BrowserRunResult>;
+  /** Adds the handoff to a finished result, when one happened. */
+  annotate: (result: BrowserRunResult) => BrowserRunResult;
+};
+
+function captchaGate(packet: SubmissionPacket, options: BrowserRunOptions, headed: boolean): CaptchaGate {
+  const waitMs = captchaWaitMs(options.captchaWaitSeconds);
+  const notify = options.notifyPerson ?? systemNotifier();
+  let handoffs = 0;
+  let waitedMs = 0;
+  let timedOut = false;
+  const present = async (page: AnyPage, pageText: boolean) =>
+    (await hasVisibleCaptchaChallenge(page)) || (pageText && detectCaptcha(await readBodyText(page)));
+  return {
+    async check(page, { pageText = false } = {}) {
+      if (!(await present(page, pageText))) return "clear";
+      if (!headed || waitMs === 0) return "blocked";
+      handoffs += 1;
+      const outcome = await awaitChallengeCleared(page, () => present(page, pageText), {
+        waitMs,
+        notify,
+        company: packet.company,
+      });
+      waitedMs += outcome.waitedMs;
+      if (outcome.cleared) return "solved";
+      timedOut = true;
+      return "blocked";
+    },
+    async abort(page, filled = [], reason = "interactive CAPTCHA detected; a human must complete this application") {
+      const screenshotPath = await capture(page, options.artifactsDir, packet.applicationId, "captcha");
+      const detail = timedOut ? ` (handed to the person, not cleared within ${Math.round(waitMs / 1000)}s)` : "";
+      return { ...aborted(`${reason}${detail}`, page.url()), filledFields: filled, screenshotPath, captchaDetected: true };
+    },
+    annotate(result) {
+      if (handoffs === 0) return result;
+      return { ...result, captchaHandedOff: true, captchaHandoffSeconds: Math.round(waitedMs / 1000) };
+    },
+  };
 }
 
 async function capture(page: AnyPage, dir: string, applicationId: string, stage: string): Promise<string> {

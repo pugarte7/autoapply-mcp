@@ -138,6 +138,7 @@ Runs every guard, then acts according to mode.
 | `keepOpenSeconds` | `number?` | Assisted mode: how long to leave the filled form open (at most 1800) |
 | `verificationCode` | `string?` | The one-time code the board emailed after a previous attempt hit its gate; each attempt emails a new one |
 | `waitForCodeSeconds` | `number?` | Hold the browser at a verification gate for this long (at most 1800) while the code is read from `<artifacts>/<applicationId>.code` or the configured mailbox; also bounds the wait for Workday's account-verification link |
+| `captchaWaitSeconds` | `number?` | How long to hold the filled form open for the person to solve an interactive CAPTCHA (default 180, at most 900, 0 stops at once). A headless run that meets one is redone headed once when a display is available. See [SAFETY.md](SAFETY.md#anti-bot-controls) |
 
 - `manual` returns the packet and apply URL for you to submit.
 - `assisted` fills the hosted form in a visible browser, screenshots it, and leaves it open for you to review and submit. If your submission reaches the board's confirmation page during the hold, the run returns at once and records it as submitted with that page as evidence; otherwise it returns `prepared` and you call `record_submission` yourself.
@@ -193,6 +194,7 @@ per-company, approval or destination checks.
 | `mode` | `"manual" \| "assisted" \| "auto"` |
 | `maxSubmissions` | `number?` — defaults to `submission.maxBatchSize`; always capped by that setting |
 | `headless` | `boolean?` |
+| `captchaWaitSeconds` | `number?`, as for `submit_application` |
 
 ### `list_batches`
 Recent batches with status and per-state counts.

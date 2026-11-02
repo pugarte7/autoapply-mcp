@@ -26,6 +26,7 @@ import { applicationCountsByCompany, getEvaluation, getJob, listQueue } from "..
 import { prepareApplicationFor } from "../drafting/prepare.js";
 import { autoFillableFields } from "../drafting/personal.js";
 import { runApplicationForm } from "../submission/browser.js";
+import { captchaNotifierFor, captchaWaitSecondsInput } from "../submission/captchaHandoff.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
@@ -317,10 +318,11 @@ export function registerBatchTools(server: McpServer): void {
         mode: z.enum(["manual", "assisted", "auto"]).default("manual"),
         maxSubmissions: z.number().int().positive().max(200).optional(),
         headless: z.boolean().optional(),
+        captchaWaitSeconds: captchaWaitSecondsInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    handler(async (args: { batchId: string; mode?: "manual" | "assisted" | "auto"; maxSubmissions?: number; headless?: boolean }) => {
+    handler(async (args: { batchId: string; mode?: "manual" | "assisted" | "auto"; maxSubmissions?: number; headless?: boolean; captchaWaitSeconds?: number }) => {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
       if (!batch) throw new AppError("batch_not_found", `no batch ${args.batchId}`);
@@ -402,6 +404,8 @@ export function registerBatchTools(server: McpServer): void {
             // Workday has no anonymous apply path, so refusing to register a
             // candidate account there is refusing to apply at all.
             allowAccountCreation: mode === "assisted" || isWorkdayUrl(job.applyUrl),
+            captchaWaitSeconds: args.captchaWaitSeconds,
+            notifyPerson: captchaNotifierFor(server),
           });
 
           if (run.status === "submitted") {
