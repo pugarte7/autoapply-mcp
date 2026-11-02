@@ -1,5 +1,6 @@
 # autoapply-mcp: AI job application agent for Greenhouse, Lever, Ashby and Workday
 
+[![npm](https://img.shields.io/npm/v/autoapply-mcp.svg)](https://www.npmjs.com/package/autoapply-mcp)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js 22.5+](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen.svg)](https://nodejs.org)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-server-8A2BE2.svg)](https://modelcontextprotocol.io)
@@ -65,7 +66,17 @@ Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, S
 Requirements:
 
 - Node.js 22.5 or newer (uses the built-in `node:sqlite`, so there is no native build step)
-- Playwright, only if you want assisted or automatic form filling: `npm install playwright && npx playwright install chromium`
+- Playwright, only if you want assisted or automatic form filling, installed next to autoapply-mcp (`npm install -g playwright` for the npm install, `npm install playwright` in a checkout), then `npx playwright install chromium`
+
+From npm:
+
+```bash
+npm install -g autoapply-mcp
+node "$(npm root -g)/autoapply-mcp/dist/cli/init.js"            # creates ~/.autoapply from the examples
+node "$(npm root -g)/autoapply-mcp/dist/cli/doctor.js" --probe  # validates your config and probes every board
+```
+
+From source:
 
 ```bash
 git clone https://github.com/pugarte7/autoapply-mcp.git
@@ -190,8 +201,8 @@ The server speaks stdio, so it works with any MCP client that runs local servers
 {
   "mcpServers": {
     "autoapply": {
-      "command": "node",
-      "args": ["/absolute/path/to/autoapply-mcp/dist/index.js"],
+      "command": "npx",
+      "args": ["-y", "autoapply-mcp"],
       "env": { "AUTOAPPLY_HOME": "/absolute/path/to/your/.autoapply" }
     }
   }
@@ -201,17 +212,19 @@ The server speaks stdio, so it works with any MCP client that runs local servers
 **Claude Code:**
 
 ```bash
-claude mcp add --env AUTOAPPLY_HOME=/absolute/path/to/your/.autoapply autoapply -- node /absolute/path/to/autoapply-mcp/dist/index.js
+claude mcp add --env AUTOAPPLY_HOME=/absolute/path/to/your/.autoapply autoapply -- npx -y autoapply-mcp
 ```
 
 **Codex** (`~/.codex/config.toml`):
 
 ```toml
 [mcp_servers.autoapply]
-command = "node"
-args = ["/absolute/path/to/autoapply-mcp/dist/index.js"]
+command = "npx"
+args = ["-y", "autoapply-mcp"]
 env = { AUTOAPPLY_HOME = "/absolute/path/to/your/.autoapply" }
 ```
+
+Running from a source checkout instead, replace `npx -y autoapply-mcp` with `node /absolute/path/to/autoapply-mcp/dist/index.js`.
 
 For salaries in Spain, connect the `tech-pay-spain` server too: Streamable HTTP at `https://spanishtoptechcompanies.com/mcp`, no sign-in. Its [skill](https://github.com/pugarte7/spanish-top-tech-companies/tree/website/skills/tech-pay-spain) tells agents to apply through this server.
 
