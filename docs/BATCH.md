@@ -129,7 +129,7 @@ Both surface in `prepare_application` under `questionsNeedingHuman`, and in `pre
 
 This is the right shape for attestations about the application itself. Whether AI assistance was used is a fact only you can attest to, and some employers - Anthropic among them - explicitly ask for unmediated writing on questions like "Why this company?". Where an employer asks that, write that answer yourself rather than relying on a narrative template.
 
-`essay` questions are never pre-answered: a generic answer to "why do you want to work here" is worse than none.
+`essay` questions are never pre-answered: a generic answer to "why do you want to work here" is worse than none. Each one comes back marked `who: "agent"`, and the agent writes it for that posting from the match report's facts, citing them, before you approve the batch. Where an employer asks for writing without AI assistance, the agent leaves it to you.
 
 ## Work authorization
 
@@ -253,9 +253,9 @@ additional reviewed batches rather than making a single unbounded batch.
 |---|---|
 | `manual` | Returns apply URLs and packets for you to submit, then call `record_submission` |
 | `assisted` | Fills each hosted form in a visible browser for you to review and submit |
-| `auto` | Fills and submits. Requires campaign mode `auto` and an allowlisted company |
+| `auto` | Fills and submits. Requires campaign mode `auto`, and a listed company when `submission.allowedCompanies` is non-empty |
 
-A CAPTCHA, an unfillable required field, or an off-allowlist redirect marks that application `needs_human` and the batch continues.
+A CAPTCHA, an unfillable required field, or an off-allowlist redirect marks that application `needs_human` and the batch continues. Each such result carries `fieldsToAnswer` and a `nextStep`: the agent answers the `who: "agent"` fields from your profile and resubmits that application. With a verification mailbox configured, each run waits up to 300 seconds at a code gate (`waitForCodeSeconds` changes it), reading the code from the mailbox or from that application's own `<artifacts>/<applicationId>.code`.
 
 ## Realistic volume
 

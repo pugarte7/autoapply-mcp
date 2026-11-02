@@ -96,12 +96,14 @@ Builds the match report, loads the employer's application questions, drafts only
 | `force` | `boolean?` | Prepare even if the job failed the gates |
 | `resumeId` | `string?` | A `profile.resumes` id to use instead of the matched track's variant, e.g. the security variant for a security role the classifier filed under a general software track |
 
-Returns the application id, status, packet hash, the match report, the questions needing a human, and the answers that were auto-filled with their citations.
+Returns the application id, status, packet hash, the match report, the questions still open (`questionsNeedingHuman`), and the answers that were auto-filled with their citations.
 
-Status will be `needs_human` when any question requires your decision, otherwise `awaiting_approval`.
+Each open question carries `who`. `"agent"` means the profile or CV can answer it and the agent writes the answer itself: essays and other free text with no authorised narrative are blocked as agent-draftable, with guidance to write from the match report's `relevantFacts`, cite the fact ids and never claim anything in `claimsToAvoid`. `"person"` means only the candidate can answer: work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, and attestations that claim something about them, when no standing answer covers them. Neither kind is auto-filled; both are recorded with `set_application_content` and shown to the person in the packet they approve.
+
+Status will be `needs_human` while a required question is open, otherwise `awaiting_approval`.
 
 ### `set_application_content`
-Records a cover letter and answers to questions the policy engine would not fill. Invalidates any prior approval, because approval is bound to content.
+Records a cover letter and answers to questions the policy engine would not fill: the ones the agent wrote (`who: "agent"`) and the ones the person gave (`who: "person"`). Invalidates any prior approval, because approval is bound to content.
 
 | Input | Type |
 |---|---|
@@ -137,18 +139,21 @@ Runs every guard, then acts according to mode.
 | `headless` | `boolean?` | Ignored in assisted mode |
 | `keepOpenSeconds` | `number?` | Assisted mode: how long to leave the filled form open (at most 1800) |
 | `verificationCode` | `string?` | The one-time code the board emailed after a previous attempt hit its gate; each attempt emails a new one |
-| `waitForCodeSeconds` | `number?` | Hold the browser at a verification gate for this long (at most 1800) while the code is read from `<artifacts>/<applicationId>.code` or the configured mailbox; also bounds the wait for Workday's account-verification link |
+| `waitForCodeSeconds` | `number?` | Hold the browser at a verification gate for this long (at most 1800) while the code is read from `<artifacts>/<applicationId>.code` or the configured mailbox; also bounds the wait for Workday's account-verification link. Defaults to 300 with a verification mailbox configured, otherwise 0 |
 
 - `manual` returns the packet and apply URL for you to submit.
 - `assisted` fills the hosted form in a visible browser, screenshots it, and leaves it open for you to review and submit. If your submission reaches the board's confirmation page during the hold, the run returns at once and records it as submitted with that page as evidence; otherwise it returns `prepared` and you call `record_submission` yourself.
-- `auto` fills and clicks submit. Requires campaign mode `auto`, an allowlisted company, every required field fillable, and no unresolved questions.
+- `auto` fills and clicks submit. Requires campaign mode `auto`, every required field fillable, no unresolved questions, and, when `submission.allowedCompanies` is non-empty, a company on that list. With `AUTOAPPLY_ATS_PASSWORD` set it registers a candidate account where a board demands one, on any ATS; without it only Workday registers.
+
+A run that stops short returns `fieldsToAnswer`: each required field it could not fill, with its `questionKey` and `who`. The `nextStep` names the fields the agent can answer from the profile, to record with `set_application_content` and run again, and the ones to put in the single grouped message to the person. A CAPTCHA is handed to the person, never solved.
 
 Greenhouse and Workday gate submission behind an emailed code or link that only
 lives as long as the attempt that requested it. Link a mailbox before the first
 submission (`AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD`, see
-[CONFIGURATION.md](CONFIGURATION.md#verification-codes-environment-only)) and pass
-`waitForCodeSeconds`; without it the run stops at the gate and a person writes the
-code to `<artifacts>/<applicationId>.code` while it waits.
+[CONFIGURATION.md](CONFIGURATION.md#verification-codes-environment-only)) and runs
+wait 300 seconds at the gate by default, reading the code themselves. Without a
+mailbox, pass `waitForCodeSeconds` and have the code written to
+`<artifacts>/<applicationId>.code` while the run waits.
 
 SmartRecruiters, Workable and Recruitee are discovery-only integrations.
 `assisted` and `auto` fail with `ats_browser_not_supported`; manual packets remain
@@ -173,10 +178,10 @@ Prepares many applications at once from a queue filter, using the same drafting 
 | `allowUnknownCompensation` | `boolean?` — default false |
 | `limit` | `number?` — default 50, max 300 |
 
-Returns the batch id, ready versus needs-human counts, `blockingReasons` grouped by category, `recurringQuestions` listing the exact repeated question text with suggestions and guidance, the auto-filled personal fields, and the manifest hash.
+Returns the batch id, ready versus needs-human counts, `blockingReasons` grouped by category, `recurringQuestions` listing the exact repeated question text with `who`, suggestions and guidance, the auto-filled personal fields, and the manifest hash.
 
 ### `preview_batch`
-Every application in the batch with company, role, compensation, readiness and what is blocking it, including each application's `outstanding` questions with their suggestions and guidance. Returns the current manifest hash and whether the stored one is stale.
+Every application in the batch with company, role, compensation, readiness and what is blocking it, including each application's `outstanding` questions with `who`, their suggestions and guidance. Returns the current manifest hash and whether the stored one is stale.
 
 ### `approve_batch`
 Asks the person to approve every ready application, listed by company and title, and records an approval for each on their yes. Requires `batchId`, `manifestHash` and `expectedCount`; a mismatch in either fails with `manifest_mismatch` or `count_mismatch` before anyone is asked. Without an approval dialog in the client, the person runs `node dist/cli/approve.js --batch <batchId> <manifestHash> <count>`.
@@ -191,8 +196,11 @@ per-company, approval or destination checks.
 |---|---|
 | `batchId` | `string` |
 | `mode` | `"manual" \| "assisted" \| "auto"` |
-| `maxSubmissions` | `number?` — defaults to `submission.maxBatchSize`; always capped by that setting |
+| `maxSubmissions` | `number?` — defaults to `submission.maxBatchSize` (15); always capped by that setting |
 | `headless` | `boolean?` |
+| `waitForCodeSeconds` | `number?` — as for `submit_application`: 300 by default with a verification mailbox, otherwise 0. Each application polls its own `<artifacts>/<applicationId>.code` |
+
+Each application that stops short carries `fieldsToAnswer` and its own `nextStep`; answer the `who: "agent"` fields and resubmit it with `submit_application`. Account registration follows the same rule as `submit_application`.
 
 ### `list_batches`
 Recent batches with status and per-state counts.

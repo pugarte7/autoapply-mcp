@@ -196,7 +196,7 @@ Thresholds set the tiers. Calibrate them against your own pool: run `discover_jo
   "allowedAtsDomains": ["job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com"],
   "allowedCompanies": [],
   "dailyLimit": 15,
-  "maxBatchSize": 3,
+  "maxBatchSize": 15,
   "maxPerCompany": 3,
   "minDelaySeconds": 90
 }
@@ -216,9 +216,9 @@ After upgrading server code to support this setting, restart existing MCP
 connections so they load the new schema. Once the new code is running,
 `reload_config` applies configuration-only changes without another restart.
 
-`allowedCompanies` is an allowlist, not a filter: an empty list blocks every employer. A company must be added by name before any application to it can be submitted, which is what stops a mis-scoped batch from contacting people you never intended to apply to.
+`allowedCompanies` restricts `auto` mode to the companies it names. Empty, the default, means no company restriction: any employer that passes the other guards can be submitted to. A non-empty list limits `auto` submissions to those companies (matched by name, case-insensitively) and refuses the rest with `company_not_allowlisted`, which is how to keep an unattended run inside a set of employers you chose. `assisted` runs are not limited by it, because a person sends those themselves. `exclusions.companies` blocks a company in every mode.
 
-`maxBatchSize` caps how many applications a single `prepare_batch` or `submit_batch` run may touch, even when a caller passes a larger explicit limit. Keeping it small keeps a run reviewable and avoids the rapid consecutive submissions that ATS platforms rate-limit. `maxPerCompany` caps how many live applications may exist for one employer, since several reject the excess outright.
+`maxBatchSize` caps how many applications a single `prepare_batch` or `submit_batch` run may touch, even when a caller passes a larger explicit limit. It defaults to 15, a day's work under one approval. Pacing (`minDelaySeconds`) is what spaces submissions out against ATS rate limits, and `dailyLimit` and `maxPerCompany` still bound the volume. `maxPerCompany` caps how many live applications may exist for one employer, since several reject the excess outright.
 
 ## companies.json
 
@@ -237,14 +237,18 @@ connections so they load the new schema. Once the new code is running,
 
 Start from `presets/ai-security-us-canada.json`, which contains 135 boards verified live against the ATS APIs. `npm run init` copies it for you. It is a starting point, not a fixed list: this file is your own selection, so add and remove boards freely. Boards found during a campaign land in your copy, not in the repository, so contribute anything worth sharing back to the preset.
 
-## Workday accounts (environment only)
+## Candidate accounts (environment only)
 
 Workday makes every applicant register on each employer's tenant, so Workday
-boards need a password the server can register and sign in with.
+boards need a password the server can register and sign in with. Other boards
+that put the form behind a sign-up page get the same treatment in `auto` mode
+once `AUTOAPPLY_ATS_PASSWORD` is set: setting it is the consent to register.
+Without it, only Workday and `assisted` runs (with a person at the window)
+register an account.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Without it a Workday submission stops with a `credentials_missing` error. |
+| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Without it a Workday submission stops with a `credentials_missing` error, and `auto` mode registers no account elsewhere. |
 | `AUTOAPPLY_ATS_EMAIL` | `personal.email` | Account email, when it should differ from the profile's. |
 
 Use one password that satisfies common rules (upper and lower case, a digit, a
@@ -258,12 +262,17 @@ original.
 
 Greenhouse increasingly emails a one-time code before it accepts a submission,
 and the code dies the moment a second submit asks for a new one. `submit_application`
-with `waitForCodeSeconds` therefore holds the browser at the gate and polls
-`<artifacts>/<applicationId>.code`, which a person can write by hand.
+and `submit_batch` therefore hold the browser at the gate for `waitForCodeSeconds`
+and poll `<artifacts>/<applicationId>.code` (one file per application, so two
+gated applications in a batch never read each other's code), which the agent or
+a person can write.
 
 Setting the variables below lets the server read that code out of a mailbox
 instead. Both readers run together, so the file hand-off keeps working and
-whichever code arrives first is used.
+whichever code arrives first is used. With a mailbox configured,
+`waitForCodeSeconds` defaults to 300, so a run clears the gate by itself; without
+one it defaults to 0, because nothing would supply the code unprompted. Pass it
+explicitly to wait for a code you will write to the file yourself.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -289,8 +298,8 @@ invalidating the code the run is waiting for.
 
 **Workday account verification.** Workday will not let a newly registered
 candidate account sign in until a link it emails has been opened. The same
-inbox supplies that link: with it configured and `waitForCodeSeconds` set, a run
-waits up to that long for the email - sent on registration, or requested with
+inbox supplies that link: with it configured, a run waits up to
+`waitForCodeSeconds` (300 by default) for the email - sent on registration, or requested with
 "Resend Account Verification" when an earlier run left the account unverified -
 opens the link in a second tab, signs in and carries on to the application.
 Without the inbox, or if no email arrives in time, the run stops with

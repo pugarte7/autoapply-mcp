@@ -103,7 +103,7 @@ function main(): void {
       "in the wrong place, and probes each configured board.",
       "",
       "Submission stays in \"manual\" mode until you change campaign.submission.mode,",
-      "and no employer is contacted until a company appears in submission.allowedCompanies.",
+      "and a non-empty submission.allowedCompanies limits auto mode to the companies it names.",
     ].join("\n"),
   );
 }

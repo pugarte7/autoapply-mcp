@@ -54,11 +54,11 @@ Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, S
 
 ## Design rules
 
-1. **Nothing is invented.** Every drafted answer traces to a profile field or a pre-approved answer. Anything else is handed back to you.
+1. **Nothing is invented.** Every drafted answer traces to a profile field or a pre-approved answer. Anything else is handed back: to your agent when your profile answers it, to you when only you can.
 2. **Sensitive questions always stop.** Work authorization, citizenship, compensation, criminal history, demographics and legal attestations require a human decision by default.
 3. **Approval binds to content, and it is yours.** `approve_application` shows you the packet and records your answer with its hash; the model cannot give it for you. Editing anything invalidates it and submission is refused.
 4. **Job descriptions are untrusted data.** Text from employers is scanned for prompt-injection patterns, wrapped in an explicit data boundary, and never treated as instructions.
-5. **Anti-bot controls are respected.** A detected CAPTCHA aborts the run and hands the application back to you. There is no solving, evading or fingerprint spoofing.
+5. **Anti-bot controls are respected.** A detected CAPTCHA aborts the run and is handed to you to complete. There is no solving, evading or fingerprint spoofing.
 6. **Destinations are allowlisted.** Submissions only go to hosts the campaign explicitly trusts, over HTTPS.
 
 ## Quick start
@@ -161,7 +161,7 @@ discovery. Paid accounts are never created automatically.
 
 Nothing in this repository is specific to one candidate. Keep `profile.json`, resumes and the database in `~/.autoapply` and they can never be committed by accident.
 
-A fresh install cannot contact an employer: `submission.mode` is `manual`, and `submission.allowedCompanies` is empty, which blocks every company until you add it by name.
+A fresh install cannot contact an employer: `submission.mode` is `manual`. `submission.allowedCompanies` starts empty, which puts no restriction on companies; list names there to limit `auto` mode to those employers.
 
 ### Environment variables
 
@@ -179,7 +179,7 @@ A fresh install cannot contact an employer: `submission.mode` is `manual`, and `
 | `AUTOAPPLY_FOORILLA_API_KEY` | unset | Optional API key for an existing Foorilla PRO+ subscription; never stored in campaign files |
 | `AUTOAPPLY_OTP_IMAP_USER` | unset | Mailbox that receives forwarded verification mail; switches on reading Greenhouse codes and Workday links |
 | `AUTOAPPLY_OTP_IMAP_PASSWORD` | unset | App password for that mailbox; never stored in campaign files |
-| `AUTOAPPLY_ATS_PASSWORD` | unset | Password for the Workday candidate accounts the server registers |
+| `AUTOAPPLY_ATS_PASSWORD` | unset | Password for the candidate accounts the server registers: always on Workday, and on any other board in `auto` mode once set |
 
 ### Link a mailbox for verification codes
 
@@ -187,9 +187,9 @@ Greenhouse emails a one-time code before it accepts a submission and Workday ema
 
 1. Make a filter on your real address that forwards `from:(greenhouse OR workday.com OR myworkday.com)` to a mailbox that receives nothing else.
 2. Create an app password for that mailbox and set `AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD` in the MCP client's `env`.
-3. Pass `waitForCodeSeconds` to `submit_application`.
+3. That is all: with the mailbox set, `submit_application` and `submit_batch` wait up to 300 seconds at a gate and read the code themselves. Pass `waitForCodeSeconds` to change the wait.
 
-`doctor` reports whether the mailbox is configured. Without it a gated submission stops and you write the code to `<artifacts>/<applicationId>.code` while the run waits. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
+`doctor` reports whether the mailbox is configured. An agent with its own mail connector can read the code instead. Without either, pass `waitForCodeSeconds` and the code is written to `<artifacts>/<applicationId>.code` while the run waits. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
 
 ## Use with Claude, Cursor, Codex and other MCP clients
 
@@ -264,7 +264,7 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 | `assisted` | Server fills the hosted form in a visible browser and leaves it open for you to review and submit | After the manual pilot proves the packets are right |
 | `auto` | Server fills and clicks submit | Only for allowlisted companies on forms you have already seen work |
 
-`auto` additionally requires the company to appear in `submission.allowedCompanies`, every required field to be fillable, and no blocked questions to remain unanswered.
+`auto` additionally requires every required field to be fillable, no blocked questions to remain unanswered, and, when `submission.allowedCompanies` is non-empty, the company to appear in it.
 
 ## What it deliberately does not do
 
@@ -284,7 +284,7 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 ### Can an AI agent apply to jobs for me?
 
-Yes. Connect this server to Claude, Cursor, Codex or another MCP client and the agent can find openings, fill the application and, once you approve the exact packet, submit it. In `assisted` mode it fills the form and you click submit; in `auto` mode it submits by itself, but only to companies you have allowlisted.
+Yes. Connect this server to Claude, Cursor, Codex or another MCP client and the agent can find openings, fill the application and, once you approve the exact packet, submit it. In `assisted` mode it fills the form and you click submit; in `auto` mode it submits by itself, under the approval you gave, and only to the companies in `submission.allowedCompanies` if you list any.
 
 ### Is this a LinkedIn Easy Apply bot?
 
@@ -300,11 +300,11 @@ On your machine, in `~/.autoapply`: your profile, resumes and a SQLite database.
 
 ### Does it write my cover letter or invent answers?
 
-No. Drafted answers come only from your profile and pre-approved answers. The server supplies structured evidence for a cover letter; your agent writes it and you approve it.
+It invents nothing. The server fills answers only from your profile and pre-approved answers. Your agent writes the cover letter and any essay question from the facts in your profile, cites them and avoids anything the posting asks for that you lack; you read every word in the packet you approve. Work authorization, sponsorship, salary and the other questions only you can answer are gathered into one message to you.
 
 ### Does it solve CAPTCHAs?
 
-No. A detected CAPTCHA stops the run and hands the application back to you.
+No. A detected CAPTCHA stops the run and the agent asks you to complete it, then runs again.
 
 ### Does it work for jobs in Europe or Spain?
 

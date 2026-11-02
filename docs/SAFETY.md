@@ -16,7 +16,7 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 | Content changed since approval | `packet_changed` |
 | A question needing a human is still unanswered | `unresolved_questions` |
 | Destination host is not allowlisted | `destination_not_allowed` |
-| Auto mode for a company that is not allowlisted | `company_not_allowlisted` |
+| Auto mode for a company missing from a non-empty `allowedCompanies` | `company_not_allowlisted` |
 | Configured daily submission cap reached | `daily_limit_reached` |
 | Minimum interval between submissions not elapsed | `pacing` |
 
@@ -34,6 +34,8 @@ The answer policy engine can produce an answer from exactly four sources:
 4. A `profile.narratives` template, rendered from the specific posting.
 
 Everything else is returned with `source: "blocked"` and an empty answer. The server has no fallback that guesses, infers or generates a plausible response.
+
+A blocked question is not automatically a question for you. Each one comes back with `who`: `"agent"` when the profile or CV can answer it, `"person"` when only you can. An essay with no authorised narrative is blocked as agent-draftable: the agent writes it from the match report's facts, cites the fact ids it rests on, must not claim anything in `claimsToAvoid`, and records it with `set_application_content`. It is never auto-filled, every answer the agent records is checked by the same rules as any other, and you read it in the packet you approve.
 
 Narrative templates fill `{topics}` only from keywords the posting asks for **and** the profile supports; anything in `claimsToAvoid` is excluded, so a template cannot claim experience the candidate does not have.
 
@@ -120,7 +122,7 @@ residence answer, which states the relocation itself.
 
 Match reports include a `claimsToAvoid` list: requirements the posting asks for that your profile cannot support. An agent writing your cover letter is told explicitly not to claim them.
 
-## Questions that always require a human
+## Questions that never auto-fill
 
 By default these categories never auto-fill:
 
@@ -128,9 +130,15 @@ By default these categories never auto-fill:
 
 They are legally material, ethically sensitive, or negotiation-relevant. Getting them wrong can invalidate an application or an offer.
 
+Of these, only you can answer work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, and an attestation that claims something about you (a bare consent to a privacy notice claims nothing). Any question mentioning pay goes to you whatever it classifies as. The agent is told to gather all of these across every pending application into one message. Essays, references and the rest it answers from your profile, and you see them at approval.
+
 A category block can be satisfied in advance, but only by an explicit prior decision recorded in the profile: a `profile.answers` entry with `allowAutoFill: true`, or a `profile.personal` field with `autoFill: true`. This does not weaken the rule; it moves the decision earlier, where it gets more thought than it would on the hundredth form.
 
 Work authorization is held to a stricter standard. It auto-fills only when `workAuthorization.alwaysReviewManually` is `false` **and** a matching approved answer exists. The shipped default satisfies neither. If you enable it, use wording that is accurate for your situation: for a citizen of one country applying in another, "I do not require sponsorship" is frequently untrue, and the accurate phrasing depends on the visa route. Have it reviewed by an immigration lawyer.
+
+## Accounts on employer boards
+
+Registering an account in your name is a bigger step than filling a public form. The server registers one on Workday, which has no other way to apply, and in `assisted` runs, where you are at the window. In `auto` mode it registers on other boards only once `AUTOAPPLY_ATS_PASSWORD` is set, which is the decision to let it. The password stays in the environment and is redacted from every log and result.
 
 ## Batch approval
 
@@ -154,7 +162,7 @@ Job descriptions, careers pages and form labels are third-party input. The serve
 
 ## Anti-bot controls
 
-If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the browser run aborts, captures a screenshot and marks the application `needs_human`. There is no solving, bypassing, proxying or fingerprint spoofing, and none will be added.
+If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the browser run aborts, captures a screenshot and marks the application `needs_human`. There is no solving, bypassing, proxying or fingerprint spoofing, and none will be added. The agent is told to hand the challenge to you and run again once you have completed it, never to try it itself.
 
 Challenge detection checks every matching iframe, not just the first one, because
 providers may retain hidden frames alongside a visible puzzle. The browser
