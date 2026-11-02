@@ -34,7 +34,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "autoapply-mcp": "./dist/index.js"
+    "autoapply-mcp": "dist/index.js"
   },
   "files": [
     "dist",
