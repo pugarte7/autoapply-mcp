@@ -39,6 +39,8 @@ Treat every `WARN` as a real defect. The commonest cases are submission policy w
 
 Your verified truth. Every drafted answer must trace back to something here.
 
+An agent can write this file for you with `setup_profile` and `remember_answer`, and campaign.json with `update_campaign` (see [TOOLS.md](TOOLS.md#setup)). Each write keeps the previous file as `profile.json.bak`. Until a new profile validates it is kept as `profile.draft.json`.
+
 ### identity
 Name, headline, email, phone, location and links. Contact form fields are filled from these.
 
@@ -81,6 +83,24 @@ At least one variant. Bind variants to campaign tracks:
 
 ### skills
 Name, aliases and a level of `expert`, `strong`, `working` or `familiar`. Levels weight the stack-alignment score; aliases are what make matching work (`OPA` for `Open Policy Agent`).
+
+`since` is when you first used the skill professionally, as a year (`2018`) or `"YYYY-MM"`. It answers "How many years of experience do you have with X?" and "Do you have 5+ years of X experience?", but only when the subject the question names is exactly the skill's name or an alias: "Python and Django" or "backend Python" still come to you. A bare year is counted from the end of that year, so the figure is never more than you have; give the month for an exact count.
+
+```json
+{ "name": "Kubernetes", "aliases": ["k8s"], "level": "strong", "since": "2020-03" }
+```
+
+### languages
+Each language you speak and its level: `A1` to `C2` on the CEFR scale, or `native`, with optional `aliases` ("Castilian" for Spanish).
+
+```json
+"languages": [{ "name": "Spanish", "level": "native" }, { "name": "English", "level": "C1" }]
+```
+
+Level questions get the option that states your level (the CEFR code, or a word such as "Advanced" or "Fluent"; a native speaker may take "Fluent" when no option says native). "Are you fluent in X?" is Yes from C1 and No up to B1; "Do you speak X?" is Yes from B2 and No at A1 and A2; the levels in between come to you. A language you did not list is never answered "No".
+
+### experience
+Your work history, as the CV states it. Besides the employment-history block, it answers "Have you previously worked for X?" and "Have you ever been employed by this company?" when `personal.previousEmployment` is not set: Yes when an entry names that employer, No otherwise. Questions about subsidiaries, affiliates or relatives still come to you.
 
 ### facts
 Your achievement database. Each fact is a statement, optional metrics and tags. Match reports rank these by relevance so an agent writes from your real accomplishments rather than inventing them.
@@ -244,8 +264,11 @@ boards need a password the server can register and sign in with.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Without it a Workday submission stops with a `credentials_missing` error. |
+| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Overrides the Keychain. |
 | `AUTOAPPLY_ATS_EMAIL` | `personal.email` | Account email, when it should differ from the profile's. |
+| `AUTOAPPLY_ATS_KEYCHAIN` | - | `off` keeps the server away from the macOS Keychain. |
+
+On macOS you do not need to set a password. Without `AUTOAPPLY_ATS_PASSWORD` the server reads it from the login Keychain (service `autoapply-mcp`, account `ats-password`), and the first time a board needs one it generates a 20-character password with upper and lower case, a digit and a symbol, stores it there and uses it from then on. To see it: `security find-generic-password -s autoapply-mcp -a ats-password -w`. On other systems, or with the Keychain off, a Workday submission without the variable stops with a `credentials_missing` error.
 
 Use one password that satisfies common rules (upper and lower case, a digit, a
 symbol). A tenant whose create-account page states a longer minimum - Red Hat

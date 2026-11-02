@@ -2,6 +2,39 @@
 
 All tools return JSON text. Failures return a structured message beginning with a stable error code in brackets, for example `[not_approved] no recorded human approval for this application`.
 
+## Setup
+
+These let an agent set everything up from inside the conversation, so a client with no file access (Claude Desktop without a filesystem server, ChatGPT) never sends the person off to edit JSON. Each write is validated, the previous file is kept as `<file>.bak`, the write is staged and renamed, and the server reloads its configuration afterwards.
+
+A few fields turn a sensitive question into a standing answer: `workAuthorization.alwaysReviewManually: false`, a `compensation.disclosurePolicy` other than `decline`, an auto-filled answer in a blocked category (work authorization, pay, demographics, legal, essays...), an auto-filled demographic or date of birth, a higher `submission.mode`, and removing a category from `blockedQuestionCategories`. Those are written at their safe value and asked of the person through the approval dialog. A client with no dialog gets back `standing.state: "pending"` and a command for the person to run in their own terminal, `node dist/cli/approve.js --setup <changeId>`. The agent cannot make them standing itself. The text the person sees is rendered by the server from the change.
+
+### `onboarding_questions`
+What the profile and campaign still lack for the forms boards typically show, grouped (about you, CV, work authorization, pay, where and how, roles, common form questions, blank answer-bank entries, verification mailbox), with a `message` that asks all of it at once. Call it before asking the person anything.
+
+### `setup_profile`
+Creates or updates profile.json from what the agent extracted from the CV and the person's messages. Takes any of `identity`, `personal`, `experience`, `education`, `skills` (with optional `since`), `facts`, `languages`, `preferences`, `workAuthorization`, `compensation`, `resumes`, `answers`, `narratives`, and `statedByPerson`.
+
+The patch is deep-merged: objects key by key, lists entry by entry when entries have an identity (`id`, `key`, `name`, `term`, company and title, institution), other lists replaced, `null` removes a key. A resume `path` must exist and be a real PDF or DOCX. A profile that does not validate yet and has no profile.json is kept as `profile.draft.json`, and the reply lists what is missing; an existing profile.json is never replaced by an invalid one. Answers in the patch count as inferred unless `statedByPerson` is true.
+
+### `update_campaign`
+Same pattern for campaign.json: `name`, `targetApplications`, `tracks`, `locations`, `compensation` (floors, fx), `seniority`, `exclusions`, `submission` (mode, limits, allowlists, blocked categories) and `freshnessDays`. Boards are added with `add_company_board`.
+
+### `remember_answer`
+Stores a standing answer in `profile.answers` and fills it into every open application (`drafted`, `needs_human`, `awaiting_approval`) whose question the drafting engine now answers from it. Reports `updatedApplications` with the questions each one gained.
+
+| Input | Type |
+|---|---|
+| `label` | `string`, the question as the form words it |
+| `answer` | `string` |
+| `statedByPerson` | `boolean`, true only for the person's own words |
+| `key` | `string?`, defaults to the bank entry the question already matches (so a shipped blank entry is filled in), or a new key |
+| `patterns` | `string[]?`, defaults to the label lowercased |
+| `alternatives` | `string[]?` |
+| `allowAutoFill` | `boolean?`, default true |
+| `skip`, `note` | optional |
+
+A question in a blocked category, or any answer with `statedByPerson: false`, is confirmed by the person first. Answers already given on one application are never overwritten.
+
 ## Discovery and ranking
 
 ### `list_sources`
@@ -101,14 +134,16 @@ Returns the application id, status, packet hash, the match report, the questions
 Status will be `needs_human` when any question requires your decision, otherwise `awaiting_approval`.
 
 ### `set_application_content`
-Records a cover letter and answers to questions the policy engine would not fill. Invalidates any prior approval, because approval is bound to content.
+Records a cover letter and answers to questions the policy engine would not fill. Invalidates any prior approval, because approval is bound to content. Answers given here are recorded with `source: "agent"`: the agent calls this tool, so only the person's own dialog or terminal can make an answer theirs.
 
 | Input | Type |
 |---|---|
 | `applicationId` | `string` |
 | `coverLetter` | `string?` |
-| `answers` | `{ questionKey, answer }[]?` |
+| `answers` | `{ questionKey, answer, remember?, statedByPerson? }[]?` |
 | `notes` | `string?` |
+
+`remember: true` on an answer does what `remember_answer` does for that question, so it is not asked again at the next company. The reply then carries `remembered`.
 
 ### `preview_application`
 Renders the exact submission packet - every field, its value, and where the value came from - plus the packet hash to approve. Unresolved required answers are listed explicitly.
@@ -206,7 +241,7 @@ Appends an outcome: `acknowledged`, `recruiter_screen`, `interview`, `offer`, `r
 Applications with status, target role and outcome history. Optional `status` and `limit` filters.
 
 ### `audit_log`
-Recent recorded events with redacted payloads. Event types include `discovery.run`, `application.prepared`, `application.updated`, `application.approval`, `submission.manual_packet`, `submission.prepared`, `submission.submitted`, `submission.aborted`, `submission.blocked`, `submission.recorded` and `outcome.recorded`.
+Recent recorded events with redacted payloads. Event types include `discovery.run`, `application.prepared`, `application.updated`, `application.redrafted`, `application.approval`, `submission.manual_packet`, `submission.prepared`, `submission.submitted`, `submission.aborted`, `submission.blocked`, `submission.recorded` and `outcome.recorded`.
 
 ### `reload_config`
 Re-reads all three configuration files so edits apply without restarting the server.

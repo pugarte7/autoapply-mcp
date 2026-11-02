@@ -33,7 +33,7 @@ function carriable(answer: DraftAnswer): boolean {
   const value = answer.answer.trim();
   return (
     isDiscoveredQuestionKey(answer.questionKey) &&
-    answer.source === "human" &&
+    (answer.source === "human" || answer.source === "agent") &&
     value.length > 0 &&
     value.length <= CARRIED_ANSWER_MAX_LENGTH &&
     !SET_PER_POSTING.test(answer.label) &&
