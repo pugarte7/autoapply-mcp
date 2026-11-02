@@ -81,11 +81,14 @@ export const SubmissionPolicySchema = z.object({
   dailyLimit: z.number().int().positive().nullable().default(25),
   /**
    * Hard ceiling on how many applications may be prepared or submitted in a
-   * single batch. Keeps a run reviewable by a human and avoids tripping ATS
-   * rate limiting, which rejects rapid consecutive submissions. Applies even
-   * when a caller passes a larger explicit limit.
+   * single batch. Applies even when a caller passes a larger explicit limit.
+   * Fifteen is a day's work in one approval: three made a person approve five
+   * batches to reach the daily limit, which is asking them five times for one
+   * decision. Pacing (`minDelaySeconds`) is what keeps consecutive submissions
+   * clear of ATS rate limiting, not the batch size, and `dailyLimit` and
+   * `maxPerCompany` still bound the volume.
    */
-  maxBatchSize: z.number().int().positive().default(3),
+  maxBatchSize: z.number().int().positive().default(15),
   /**
    * Hard ceiling on how many applications may exist for any one company.
    * Several employers cap applications per candidate over a rolling window and
