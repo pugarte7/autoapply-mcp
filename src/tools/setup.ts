@@ -378,7 +378,7 @@ export function registerSetupTools(server: McpServer): void {
     {
       title: "Create or update the campaign",
       description:
-        "Writes campaign.json: which roles to look for, where, pay floors, seniority, exclusions and submission limits. Deep-merged like setup_profile; kept as campaign.draft.json until it validates. Raising submission.mode or removing a category from blockedQuestionCategories is asked of the person through the approval dialog and only applies once they confirm. Use add_company_board for companies.",
+        "Writes campaign.json: which roles to look for, where, pay floors, seniority, exclusions and submission limits. Deep-merged like setup_profile; kept as campaign.draft.json until it validates. Removing a category from blockedQuestionCategories is asked of the person through the approval dialog and only applies once they confirm. Use add_company_board for companies.",
       inputSchema: {
         name: z.string().min(1).optional(),
         targetApplications: z.number().int().positive().optional(),
@@ -387,7 +387,7 @@ export function registerSetupTools(server: McpServer): void {
         compensation: objectPatch("currency, floors {ISO country: minimum total}, fx {currency: rate to campaign currency}, allowUnknown, rejectBelowFloor"),
         seniority: objectPatch("allow[], reject[]"),
         exclusions: objectPatch("titlePatterns[], descriptionPatterns[], companies[]"),
-        submission: objectPatch("mode manual|assisted|auto, dailyLimit, maxBatchSize, maxPerCompany, minDelaySeconds, allowedAtsDomains[], allowedCompanies[], blockedQuestionCategories[]"),
+        submission: objectPatch("dailyLimit, maxBatchSize, maxPerCompany, minDelaySeconds, allowedAtsDomains[], allowedCompanies[], blockedQuestionCategories[]"),
         freshnessDays: z.number().int().positive().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
@@ -403,7 +403,7 @@ export function registerSetupTools(server: McpServer): void {
         backup: result.backup,
         validationIssues: result.issues,
         standing,
-        workspace: loaded.loaded ? { loaded: true, submissionMode: loaded.workspace.campaign.submission.mode } : loaded,
+        workspace: loaded.loaded ? { loaded: true } : loaded,
         stillMissing: stillMissing(paths),
       });
     }),

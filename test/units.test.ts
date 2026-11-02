@@ -28,7 +28,6 @@ describe("domain schemas", () => {
   it("applies documented defaults", () => {
     const campaign = makeCampaign();
     expect(campaign.scoring.weights.roleAlignment).toBe(25);
-    expect(campaign.submission.mode).toBe("auto");
     expect(campaign.submission.blockedQuestionCategories).toContain("work-authorization");
     expect(CompanySchema.parse({ name: "A", ats: "lever", board: "a" }).tier).toBe("B");
   });

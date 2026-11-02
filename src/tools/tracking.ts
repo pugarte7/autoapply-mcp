@@ -114,7 +114,6 @@ export function registerTrackingTools(server: McpServer): void {
         tracks: workspace.campaign.tracks.map((track) => track.id),
         companies: workspace.companies.length,
         resumes: workspace.profile.resumes.map((resume) => resume.id),
-        submissionMode: workspace.campaign.submission.mode,
         paths: workspace.paths,
       });
     }),

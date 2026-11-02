@@ -1,5 +1,5 @@
 import type { Profile } from "../domain/profile.js";
-import { normalizeLabel } from "../submission/formFields.js";
+import { normalizeLabel } from "./labels.js";
 import { SKILLS_CITATION, profileSkillsAnswer } from "./skillsAnswer.js";
 import { resolveSkillYears } from "./skillYears.js";
 

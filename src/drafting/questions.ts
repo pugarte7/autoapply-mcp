@@ -206,8 +206,8 @@ const GREENHOUSE_LOCATION_QUESTION: FormQuestion = {
 
 /**
  * Baseline fields common to hosted application forms. Used for boards that do
- * not publish their question schema; the real fields are read from the page
- * during an assisted run.
+ * not publish their question schema; the agent adds the rest from the live
+ * form with set_application_content.
  */
 export function defaultQuestionSet(): FormQuestion[] {
   return [

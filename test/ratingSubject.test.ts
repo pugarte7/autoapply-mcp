@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { draftAnswers, type FormQuestion } from "../src/drafting/answers.js";
-import { fallbackAnswersForFields, type FieldDescriptor } from "../src/submission/formFields.js";
 import { makeCampaign, makeProfile } from "./factories.js";
 
 const companyRating = {
@@ -16,14 +15,6 @@ describe("rating answer subjects", () => {
     const label = `On a scale from 0 to 5, how would you rate yourself in ${language}?`;
     const result = draftAnswers([question(label)], makeProfile({ answers: [companyRating] }), makeCampaign());
     expect(result.answers[0]).toMatchObject({ answer: "", requiresHuman: true });
-  });
-
-  it.each(["Go", "Python", "Rust"])("blocks the same %s mismatch in live answer-bank fallback", (language) => {
-    const field: FieldDescriptor = {
-      selectorIndex: 0, type: "select", name: "rating", required: true,
-      label: `On a scale from 0 to 5, how would you rate yourself in ${language}?`,
-    };
-    expect(fallbackAnswersForFields([field], [], [companyRating])).toEqual([]);
   });
 
   it("retains the authorized company-impression rating", () => {

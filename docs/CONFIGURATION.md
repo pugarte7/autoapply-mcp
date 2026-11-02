@@ -215,8 +215,7 @@ Thresholds set the tiers. Calibrate them against your own pool: run `discover_jo
 
 ```json
 {
-  "mode": "auto",
-  "allowedAtsDomains": ["job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com"],
+  "allowedAtsDomains": ["job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com", "myworkdayjobs.com"],
   "allowedCompanies": [],
   "dailyLimit": 15,
   "maxBatchSize": 15,
@@ -225,9 +224,9 @@ Thresholds set the tiers. Calibrate them against your own pool: run `discover_jo
 }
 ```
 
-`mode` is `auto` (the default: the agent fills and submits each approved application) or `assisted` (the form is filled in a visible window and the person presses submit). It is a ceiling: under `auto` a call may still ask for `assisted`, never the other way round. A `manual` mode used to exist; a file that still says `"manual"` loads as `auto` and `doctor` warns about it. Approval is required in both modes.
+`allowedAtsDomains` lists the hosts an approved application may be sent to; the default covers Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable and Recruitee. The agent sends each application with its own browser, so there is no submission mode: a `mode` key left from an older version is ignored, and `doctor` warns about it.
 
-`allowedCompanies` narrows automatic submission: when it lists companies, auto mode submits only to those; empty, any company that passes the campaign's gates may be submitted to. `blockedQuestionCategories` defaults to the full sensitive set; removing an entry is a deliberate, consequential choice.
+`allowedCompanies` narrows submission: when it lists companies, only those are handed over; empty, any company that passes the campaign's gates may be submitted to. `blockedQuestionCategories` defaults to the full sensitive set; removing an entry is a deliberate, consequential choice.
 
 `dailyLimit` accepts a positive integer or `null`. Set `"dailyLimit": null` to
 disable the daily submission ceiling; omitting it retains the default of 25.
@@ -241,7 +240,7 @@ After upgrading server code to support this setting, restart existing MCP
 connections so they load the new schema. Once the new code is running,
 `reload_config` applies configuration-only changes without another restart.
 
-`allowedCompanies` restricts `auto` mode to the companies it names. Empty, the default, means no company restriction: any employer that passes the other guards can be submitted to. A non-empty list limits `auto` submissions to those companies (matched by name, case-insensitively) and refuses the rest with `company_not_allowlisted`, which is how to keep an unattended run inside a set of employers you chose. `assisted` runs are not limited by it, because a person sends those themselves. `exclusions.companies` blocks a company in every mode.
+`allowedCompanies` restricts submission to the companies it names. Empty, the default, means no company restriction: any employer that passes the other guards can be submitted to. A non-empty list limits submissions to those companies (matched by name, case-insensitively) and refuses the rest with `company_not_allowlisted`, which is how to keep your agent inside a set of employers you chose. `exclusions.companies` blocks a company outright.
 
 `maxBatchSize` caps how many applications a single `prepare_batch` or `submit_batch` run may touch, even when a caller passes a larger explicit limit. It defaults to 15, a day's work under one approval. Pacing (`minDelaySeconds`) is what spaces submissions out against ATS rate limits, and `dailyLimit` and `maxPerCompany` still bound the volume. `maxPerCompany` caps how many live applications may exist for one employer, since several reject the excess outright.
 
@@ -277,128 +276,9 @@ Rebuild it with `npm run preset:spain`. The script reads the site's published ag
 - Seven tracks: backend and general software, frontend, full-stack, data, ML and AI, DevOps/platform/SRE, mobile. Title phrases are in English and Spanish (`ingeniero de software`, `desarrolladora frontend`, `cientifico de datos`). Write them without accents: titles are compared after accents are stripped, so a phrase written `ingeniería` never matches. Exclusion patterns are compared with accents kept, which is why both `prácticas` and `practicas` are listed.
 - Every track uses the example profile's single resume (`backend`). Point each at its own variant if you have more than one CV.
 - `seniority` keeps the defaults, which reject `junior` titles. If you are a junior engineer, move `junior` from `reject` to `allow` and lower the floor; `Becario`/`prácticas` internships stay excluded by title either way.
-- `submission.allowedAtsDomains` adds `jobs.eu.lever.co`, where EU-hosted Lever boards take applications, and `myworkdayjobs.com`, since a fifth of the Spain boards are Workday (Airbus, BBVA, Repsol and others; see [Workday accounts](#workday-accounts-environment-only)). The rest of `submission` matches the US and Canada example: `auto` mode, so an application the person approved is sent by the agent, and an empty `allowedCompanies`, so any company that passes the gates may be submitted to.
+- `submission.allowedAtsDomains` adds `jobs.eu.lever.co`, where EU-hosted Lever boards take applications. A fifth of the Spain boards are Workday (Airbus, BBVA, Repsol and others), where the agent's browser needs an account on each employer's tenant. The rest of `submission` matches the US and Canada example: an empty `allowedCompanies`, so any company that passes the gates may be submitted to.
 
 **Profile.** The same `examples/profile.example.json` serves Spain; its US-specific questions are blank and simply asked if a form shows them. Set `compensation.currency` to `EUR`, and list `ES` (and every other EU or EEA country if you are an EU citizen, who may work in all of them without a permit) in `workAuthorization.authorizedIn` and `noSponsorshipRequiredIn`. The pre-answered privacy and data-processing consents cover GDPR consent checkboxes worded in English. A form that asks in Spanish (`tratamiento de mis datos personales`, `política de privacidad`) is put to you instead, unless you add those wordings to the `privacy-consent` and `data-processing-consent` patterns.
-
-## Candidate accounts (environment only)
-
-Workday makes every applicant register on each employer's tenant, so Workday
-boards need a password the server can register and sign in with. Other boards
-that put the form behind a sign-up page get the same treatment in `auto` mode
-once `AUTOAPPLY_ATS_PASSWORD` is set: setting it is the consent to register.
-Without it, only Workday and `assisted` runs (with a person at the window)
-register an account.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Overrides the Keychain. |
-| `AUTOAPPLY_ATS_EMAIL` | `personal.email` | Account email, when it should differ from the profile's. |
-| `AUTOAPPLY_ATS_KEYCHAIN` | - | `off` keeps the server away from the macOS Keychain. |
-
-On macOS you do not need to set a password. Without `AUTOAPPLY_ATS_PASSWORD` the server reads it from the login Keychain (service `autoapply-mcp`, account `ats-password`), and the first time a board needs one it generates a 20-character password with upper and lower case, a digit and a symbol, stores it there and uses it from then on. To see it: `security find-generic-password -s autoapply-mcp -a ats-password -w`. On other systems, or with the Keychain off, a Workday submission without the variable stops with a `credentials_missing` error.
-
-Use one password that satisfies common rules (upper and lower case, a digit, a
-symbol). A tenant whose create-account page states a longer minimum - Red Hat
-requires 14 characters - is registered with the password repeated until it is
-long enough, and later runs on that tenant sign in with the same lengthened
-password. It is never written to a file and is redacted from logs like the
-original.
-
-## Verification codes (environment only)
-
-Greenhouse increasingly emails a one-time code before it accepts a submission,
-and the code dies the moment a second submit asks for a new one. Whatever reads
-it, the browser has to stay at the gate until the code is typed in. There are
-three readers, and whichever answers first is used:
-
-- **The agent (hand-off).** With no mailbox configured, `submit_application` in
-  auto mode returns `awaiting_code` as soon as the gate appears and the server
-  keeps the browser parked at it, by default for 15 minutes (`waitForCodeSeconds`,
-  at most 30). The result names the sender to look for and when the code was
-  emailed. An agent with its own access to the candidate's mail, such as a Gmail
-  connector, reads the newest email from that sender received after that moment
-  and calls `provide_verification_code`; without mail access it asks the person
-  once. A refused code can be replaced while the gate still offers its box. Ask
-  for this explicitly with `codeDelivery: "handoff"`, also when a mailbox is set.
-- **The code file.** A person can write the code to
-  `<artifacts>/<applicationId>.code`; it is read in both modes.
-- **The server's own mailbox (wait).** Set the variables below and the call
-  blocks (300 seconds by default, `waitForCodeSeconds` changes it) while the server reads the code out
-  of the mailbox itself. In hand-off mode the same mailbox keeps being read in the
-  background.
-
-Held browsers live in the server process: they close when the hold expires, when
-the client disconnects and when the server stops, and the code then dies with
-them.
-
-| Variable | Default | Meaning |
-|---|---|---|
-| `AUTOAPPLY_OTP_IMAP_USER` | - | Mailbox address. Absent means the feature is off. |
-| `AUTOAPPLY_OTP_IMAP_PASSWORD` | - | App password for that mailbox. |
-| `AUTOAPPLY_OTP_IMAP_HOST` | `imap.gmail.com` | IMAP host. |
-| `AUTOAPPLY_OTP_IMAP_PORT` | `993` | IMAPS port. |
-| `AUTOAPPLY_OTP_MAILBOX` | `INBOX,[Gmail]/All Mail,[Gmail]/Trash` | Comma-separated folders to search, in order. Defaults cover a forwarding filter that archives or deletes on arrival. Missing folders are skipped. |
-| `AUTOAPPLY_OTP_FROM` | - | Only consider senders containing this text. Greenhouse sends from `us.greenhouse-mail.io`, so use `greenhouse`, not `greenhouse.io`. Applies to codes only: Workday links are always limited to Workday's own senders. |
-
-Point this at a mailbox that receives nothing but forwarded verification mail,
-created by a filter on your real address. An app password grants full read of
-whatever mailbox it belongs to, so the narrower that mailbox is, the less the
-server can see. Credentials are read from the environment and never from
-`profile.json` or `campaign.json`, which are edited by hand, printed in previews
-and backed up.
-
-Only messages that arrive **after** the run clicked submit are considered: an
-earlier code belongs to an earlier attempt and is already dead. When a message
-yields two different candidate codes the server declines to guess, because a
-wrong code is not a free retry - the board rejects it and emails a fresh one,
-invalidating the code the run is waiting for.
-
-**Workday account verification.** Workday will not let a newly registered
-candidate account sign in until a link it emails has been opened. The same
-inbox supplies that link: with it configured, a run waits up to
-`waitForCodeSeconds` (300 by default) for the email - sent on registration, or requested with
-"Resend Account Verification" when an earlier run left the account unverified -
-opens the link in a second tab, signs in and carries on to the application.
-Without the inbox, or if no email arrives in time, the run stops with
-instructions as before. Have the forwarding filter match Workday as well as
-Greenhouse, e.g. `from:(workday.com OR myworkday.com)`: tenants send from
-addresses such as `acme@otp.workday.com`. Only https links on Workday's own
-domains (`myworkdayjobs.com`, `myworkdaysite.com`, `myworkday.com`,
-`workday.com`), in mail from those domains dated no more than two minutes before
-the request, are followed; a link naming another tenant is skipped, and the
-link itself is never logged.
-
-Requires `npm install imapflow`, an optional peer dependency.
-
-In hand-off mode an agent can pass the link itself: the email to read is the
-newest from an address on `workday.com` or `myworkday.com`, and the link goes
-to `provide_verification_code` as `link`. It is held to the same checks as one
-read from the mailbox.
-
-### Later: Gmail OAuth instead of an app password
-
-An app password is the only way in today, and it is a blunt one: it reads the
-whole mailbox, needs 2-Step Verification, and a Workspace admin can switch app
-passwords off. Gmail's own OAuth with the `gmail.readonly` scope would replace
-it, searching only for the board's sender after the submit. That is not built
-yet, and it needs two things the server cannot do alone:
-
-- **An OAuth client of your own.** `gmail.readonly` is a restricted scope, so a
-  client ID shipped with this package would need Google's security assessment.
-  You create a Desktop OAuth client in a Google Cloud project, enable the Gmail
-  API, add yourself as a test user, and give the server its client ID. While the
-  project stays in testing, Google expires its refresh tokens after seven days,
-  so the sign-in has to be repeated weekly.
-- **A way to sign in without the server ever seeing your password.** Either the
-  MCP client opens Google's consent page through URL-mode elicitation and hands
-  the server only the resulting code, or a small CLI run in your own terminal
-  (like `approve.js`) does the sign-in and stores the refresh token in the macOS
-  Keychain. Either way the token stays out of `profile.json`, `campaign.json`,
-  logs and tool output, and form elicitation never asks for a password.
-
-Until then, the hand-off above covers agents that already have a Gmail
-connector, and an app password on a forwarding-only mailbox covers the rest.
 
 ## Career sites: Google, Meta, Amazon and Apple
 
@@ -418,40 +298,12 @@ to `campaign.json` `allowedAtsDomains` (`google.com`, `metacareers.com`,
 `amazon.jobs`, `jobs.apple.com`).
 
 **Signing in.** The server never signs in, creates an account or answers a
-challenge on these sites. Sign in once by hand in Chrome using a dedicated
-profile directory, then close that window:
-
-```powershell
-& "C:\Program Files\Google\Chrome\Application\chrome.exe" --user-data-dir="$env:USERPROFILE\.autoapply\browser-profiles\careers"
-```
-
-Submissions reuse that profile's session through Playwright. A session that has
-lapsed (Apple's lasts hours, not days) ends the run with a request to sign in
-again. Only one process can hold the profile at a time, so close the Chrome
-window before a run.
+challenge on these sites. Applying needs the agent's browser signed in as you;
+an agent should ask before registering an account in your name. Apple is
+discovery only.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AUTOAPPLY_BROWSER_PROFILE` | `<home>/browser-profiles/careers` | The signed-in profile directory. |
-| `AUTOAPPLY_BROWSER_CHANNEL` | `chrome` | Browser build; `chromium` selects Playwright's own, which cannot read a profile Chrome created. |
 | `AUTOAPPLY_CAREERS_MAX_PAGES` | `10` | Google search pages read per board. |
 | `AUTOAPPLY_CAREERS_MAX_POSTINGS` | `500` | Amazon postings read per board. |
 | `AUTOAPPLY_META_SEARCH_DOC_ID` | built in | Meta's persisted search query id, for when Meta rotates it. |
-
-What each site's walker does:
-
-- **Google** replaces the profile résumé (unticking "Fill out your application
-  with your résumé", which otherwise rewrites profile fields), answers the
-  minimum-qualification statements only from recorded answers, declines
-  self-identification and confirms on the applications dashboard. Google allows
-  three applications per 30 days and may submit an older draft alongside the
-  new one, so check the dashboard for stray drafts first.
-- **Meta** replaces the résumé, picks a location from your relocation targets,
-  declines self-identification and stops on any empty field.
-- **Amazon** fills job-specific Select2 questions and radio groups from recorded
-  answers, replaces the résumé from the review page, then reads every stated
-  answer back. It stops before Submit when a self-identification answer on file
-  is not a decline, or when an eligibility answer contradicts the record. The
-  AI-preference consent appears in a dialog after Submit and is answered only
-  from a recorded answer.
-- **Apple** is discovery only; applications there are not automated.

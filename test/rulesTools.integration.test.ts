@@ -5,13 +5,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { ASKS_PERSON, person } from "./person.js";
-import { makeRulesHome, stubBoard, submittedRun } from "./rulesHome.js";
-
-const runApplicationForm = vi.hoisted(() => vi.fn());
-vi.mock("../src/submission/browser.js", async (original) => ({
-  ...(await original<typeof import("../src/submission/browser.js")>()),
-  runApplicationForm,
-}));
+import { makeRulesHome, stubBoard } from "./rulesHome.js";
 
 /** Standing rules end to end: the person approves them once, matching packets go out. */
 
@@ -41,10 +35,10 @@ async function call(client: Client, name: string, args: Record<string, unknown> 
   return { isError: result.isError === true, text, data };
 }
 
-const RULES = { tiers: ["A", "B"], maxPerDay: 3, maxPerRun: 2 };
+const RULES = { tiers: ["A", "B"], maxPerDay: 3 };
 
 beforeAll(async () => {
-  home = makeRulesHome("auto");
+  home = makeRulesHome();
   withDialog = await connect(ASKS_PERSON);
   withoutDialog = await connect();
 });
@@ -82,27 +76,29 @@ describe("standing rules tools", () => {
     await call(withDialog, "discover_jobs");
     const prepared = await call(withDialog, "prepare_batch", { tiers: ["A", "B"] });
     expect(prepared.data.readyToApprove).toBe(3);
-    const result = await call(withDialog, "submit_batch", { batchId: prepared.data.batchId, mode: "auto" });
+    const result = await call(withDialog, "submit_batch", { batchId: prepared.data.batchId });
     expect(result.text).toContain("batch_not_approved");
   });
 
-  it("send matching packets once approved, within the per-run cap, and audit which rules did it", async () => {
-    runApplicationForm.mockResolvedValue(submittedRun());
+  it("hand over matching packets once approved, and audit which rules did it", async () => {
     const approved = await call(withDialog, "approve_rules", RULES);
     expect(approved.data).toMatchObject({ approvedVia: "dialog" });
-    expect(shown.at(-1)).toContain("2 per run");
+    expect(shown.at(-1)).toContain("3 a day");
     expect(shown.at(-1)).toContain("work-authorization");
     const rulesId = String(approved.data.rulesId);
 
     const batch = (await call(withDialog, "list_batches")).data.batches[0];
-    const run = await call(withDialog, "submit_batch", { batchId: batch.batchId, mode: "auto" });
-    expect(run.isError).toBe(false);
-    expect(run.data.submitted).toBe(2);
-    expect(run.data.results.map((entry: { outcome: string }) => entry.outcome)).toContain("deferred");
-    expect(runApplicationForm).toHaveBeenCalledTimes(2);
+    for (let sent = 0; sent < 2; sent += 1) {
+      const run = await call(withDialog, "submit_batch", { batchId: batch.batchId });
+      expect(run.isError).toBe(false);
+      expect(run.data.next.authorisedBy).toBe("rules");
+      // Handing the same packet over twice counts it once against the rules.
+      await call(withDialog, "submit_batch", { batchId: batch.batchId });
+      await call(withDialog, "record_submission", { applicationId: run.data.next.applicationId });
+    }
 
-    const events = (await call(withDialog, "audit_log", { type: "submission.submitted" })).data.events;
-    expect(events).toHaveLength(2);
+    const events = (await call(withDialog, "audit_log", { type: "submission.handed_off" })).data.events;
+    expect(events).toHaveLength(4);
     for (const event of events) expect(JSON.parse(event.payload)).toMatchObject({ authorisedBy: "rules", rulesId });
 
     const listed = (await call(withDialog, "list_rules")).data.rules.find((entry: { rulesId: string }) => entry.rulesId === rulesId);
@@ -112,18 +108,17 @@ describe("standing rules tools", () => {
   it("stop at the rules' daily cap", async () => {
     const batch = (await call(withDialog, "list_batches")).data.batches[0];
     // maxPerDay is 3 and 2 went out: the third goes, and a fourth waits for tomorrow.
-    const run = await call(withDialog, "submit_batch", { batchId: batch.batchId, mode: "auto" });
-    expect(run.data.submitted).toBe(1);
+    const run = await call(withDialog, "submit_batch", { batchId: batch.batchId });
+    await call(withDialog, "record_submission", { applicationId: run.data.next.applicationId });
 
     stubBoard(4);
     await call(withDialog, "discover_jobs");
     const prepared = await call(withDialog, "prepare_batch", { tiers: ["A", "B"] });
     expect(prepared.data.readyToApprove).toBe(1);
-    const capped = await call(withDialog, "submit_batch", { batchId: prepared.data.batchId, mode: "auto" });
-    expect(capped.data.submitted).toBe(0);
-    expect(capped.data.results[0]).toMatchObject({ outcome: "deferred" });
-    expect(capped.data.results[0].detail).toContain("3 a day");
-    expect(runApplicationForm).toHaveBeenCalledTimes(3);
+    const capped = await call(withDialog, "submit_batch", { batchId: prepared.data.batchId });
+    expect(capped.data.next).toBeUndefined();
+    expect(capped.data.held[0]).toMatchObject({ outcome: "waiting" });
+    expect(capped.data.held[0].detail).toContain("3 a day");
   });
 
   it("end when revoked, with no confirmation", async () => {
@@ -133,8 +128,7 @@ describe("standing rules tools", () => {
     expect((await call(withoutDialog, "audit_log", { type: "rules.revoked" })).data.events).toHaveLength(1);
 
     const batch = (await call(withDialog, "list_batches")).data.batches[0];
-    const result = await call(withDialog, "submit_batch", { batchId: batch.batchId, mode: "auto" });
+    const result = await call(withDialog, "submit_batch", { batchId: batch.batchId });
     expect(result.text).toContain("batch_not_approved");
-    expect(runApplicationForm).toHaveBeenCalledTimes(3);
   });
 });

@@ -1,5 +1,5 @@
 import type { Language, LanguageLevel, Profile } from "../domain/profile.js";
-import { normalizeLabel } from "../submission/formFields.js";
+import { normalizeLabel } from "./labels.js";
 
 /**
  * Language questions, answered from `profile.languages`.

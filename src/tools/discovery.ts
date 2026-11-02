@@ -416,7 +416,6 @@ export function registerDiscoveryTools(server: McpServer): void {
         remainingToTarget: Math.max(0, workspace.campaign.targetApplications - submitted.length),
         submittedToday: countSubmittedSince(workspace.db, startOfDayIso()),
         dailyLimit: workspace.campaign.submission.dailyLimit,
-        submissionMode: workspace.campaign.submission.mode,
         applicationsByStatus: byStatus,
         storedJobs: countJobs(workspace.db),
         acceptedByTier: tierBreakdown(workspace.db),

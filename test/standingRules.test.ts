@@ -5,7 +5,7 @@ import type { Application, DraftAnswer, Evaluation } from "../src/domain/job.js"
 import { fixtureResumePath, makeCampaign, makeJob } from "./factories.js";
 
 const NOW = new Date("2026-11-02T10:00:00Z");
-const campaign = makeCampaign({ submission: { mode: "auto", minDelaySeconds: 0 } });
+const campaign = makeCampaign({ submission: { minDelaySeconds: 0 } });
 const job = makeJob({ companyName: "Test Corp", ats: "greenhouse" });
 
 const evaluation: Evaluation = {
@@ -57,12 +57,11 @@ function application(overrides: Partial<Application> = {}): Application {
   };
 }
 
-function active(input: Partial<StandingRulesInput> = {}, used: Partial<Pick<ActiveRules, "usedToday" | "usedThisRun">> = {}): ActiveRules {
+function active(input: Partial<StandingRulesInput> = {}, used: Partial<Pick<ActiveRules, "usedToday">> = {}): ActiveRules {
   return {
     id: "rules_1",
-    rules: normalizeRules({ maxPerDay: 5, maxPerRun: 2, ...input }, NOW),
+    rules: normalizeRules({ maxPerDay: 5, ...input }, NOW),
     usedToday: used.usedToday ?? 0,
-    usedThisRun: used.usedThisRun ?? 0,
   };
 }
 
@@ -74,7 +73,6 @@ function input(overrides: Partial<GuardInput> = {}, rules: ActiveRules[] = [acti
     approval: null,
     submittedToday: 0,
     lastSubmissionAt: null,
-    requestedMode: "auto",
     standing: { rules, evaluation },
     now: NOW,
     ...overrides,
@@ -83,24 +81,24 @@ function input(overrides: Partial<GuardInput> = {}, rules: ActiveRules[] = [acti
 
 describe("normalizeRules", () => {
   it("defaults to 30 days and A/B tiers, and refuses more than 90 days or the past", () => {
-    const rules = normalizeRules({ maxPerDay: 3, maxPerRun: 1 }, NOW);
+    const rules = normalizeRules({ maxPerDay: 3 }, NOW);
     expect(rules.tiers).toEqual(["A", "B"]);
     expect(rules.expiresAt).toBe("2026-12-02T10:00:00.000Z");
     expect(rules.allowAgentDraftedText).toBe(false);
-    expect(() => normalizeRules({ maxPerDay: 3, maxPerRun: 1, expiresAt: "2027-03-01T00:00:00Z" }, NOW)).toThrow(/90 days/);
-    expect(() => normalizeRules({ maxPerDay: 3, maxPerRun: 1, expiresAt: "2026-11-01T00:00:00Z" }, NOW)).toThrow(/future/);
-    expect(() => normalizeRules({ maxPerDay: 3, maxPerRun: 1, sneaky: true }, NOW)).toThrow(/rules_invalid|Unrecognized/);
+    expect(() => normalizeRules({ maxPerDay: 3, expiresAt: "2027-03-01T00:00:00Z" }, NOW)).toThrow(/90 days/);
+    expect(() => normalizeRules({ maxPerDay: 3, expiresAt: "2026-11-01T00:00:00Z" }, NOW)).toThrow(/future/);
+    expect(() => normalizeRules({ maxPerDay: 3, sneaky: true }, NOW)).toThrow(/rules_invalid|Unrecognized/);
   });
 
   it("hashes the same rules the same way whatever the order they were written in", () => {
-    const a = normalizeRules({ maxPerDay: 3, maxPerRun: 1, companies: ["B", "A"], tiers: ["B", "A"] }, NOW);
-    const b = normalizeRules({ tiers: ["A", "B"], companies: ["A", "B"], maxPerRun: 1, maxPerDay: 3 }, NOW);
+    const a = normalizeRules({ maxPerDay: 3, companies: ["B", "A"], tiers: ["B", "A"] }, NOW);
+    const b = normalizeRules({ tiers: ["A", "B"], companies: ["A", "B"], maxPerDay: 3 }, NOW);
     expect(rulesHash(a)).toBe(rulesHash(b));
     expect(rulesHash(a)).not.toBe(rulesHash({ ...a, maxPerDay: 4 }));
   });
 
   it("tells the person what stays with them", () => {
-    const summary = rulesSummary(normalizeRules({ maxPerDay: 3, maxPerRun: 1 }, NOW), "rules_1", "abc", campaign);
+    const summary = rulesSummary(normalizeRules({ maxPerDay: 3 }, NOW), "rules_1", "abc", campaign);
     expect(summary).toContain("work-authorization");
     expect(summary).toContain("any company whose posting passes the campaign gates");
     expect(summary).toContain("not allowed");
@@ -150,7 +148,7 @@ describe("standing rules in the submission guard", () => {
       expect(checkSubmissionAllowed(input({ application: salary })).code).toBe("rules_not_matched");
     }
     // Even a campaign that stopped blocking a category does not hand it to the rules.
-    const loose = makeCampaign({ submission: { mode: "auto", blockedQuestionCategories: [] } });
+    const loose = makeCampaign({ submission: { blockedQuestionCategories: [] } });
     expect(checkSubmissionAllowed(input({ campaign: loose, application: byAgent })).code).toBe("rules_not_matched");
 
     // A standing answer the person recorded in the profile is theirs.
@@ -181,11 +179,9 @@ describe("standing rules in the submission guard", () => {
     expect(checkSubmissionAllowed(input({ application: essay }, [active({ allowAgentDraftedText: true })])).allowed).toBe(true);
   });
 
-  it("stops at the rules' caps, as a refusal that lifts by itself", () => {
+  it("stops at the rules' daily cap, as a refusal that lifts by itself", () => {
     const day = checkSubmissionAllowed(input({}, [active({}, { usedToday: 5 })]));
     expect(day).toMatchObject({ allowed: false, code: "rules_daily_cap_reached", deferrable: true });
-    const run = checkSubmissionAllowed(input({}, [active({}, { usedThisRun: 2 })]));
-    expect(run).toMatchObject({ allowed: false, code: "rules_run_cap_reached", deferrable: true });
     // Another rule set with room still covers it.
     const spare = { ...active(), id: "rules_2" };
     expect(checkSubmissionAllowed(input({}, [active({}, { usedToday: 5 }), spare])).rulesId).toBe("rules_2");
@@ -207,9 +203,7 @@ describe("standing rules in the submission guard", () => {
     expect(checkSubmissionAllowed(input({ job: makeJob({ applyUrl: "https://evil.example.com/apply" }) })).code).toBe("destination_not_allowed");
     expect(checkSubmissionAllowed(input({ submittedToday: 25 })).code).toBe("daily_limit_reached");
     expect(checkSubmissionAllowed(input({ companyApplicationCount: 3 })).code).toBe("company_cap_reached");
-    const assisted = makeCampaign({ submission: { mode: "assisted" } });
-    expect(checkSubmissionAllowed(input({ campaign: assisted })).code).toBe("mode_not_permitted");
-    const excluded = makeCampaign({ submission: { mode: "auto" }, exclusions: { companies: ["Test Corp"] } });
+    const excluded = makeCampaign({ exclusions: { companies: ["Test Corp"] } });
     expect(checkSubmissionAllowed(input({ campaign: excluded })).code).toBe("company_excluded");
     const unresolved = application({ answers: [answer({ answer: "", source: "blocked", requiresHuman: true })] });
     expect(checkSubmissionAllowed(input({ application: unresolved })).code).toBe("unresolved_questions");

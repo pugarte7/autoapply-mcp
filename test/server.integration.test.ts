@@ -8,16 +8,6 @@ import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { fixtureResumePath } from "./factories.js";
-import { runApplicationForm } from "../src/submission/browser.js";
-
-// No real board is ever opened: the browser run is replaced by a receipt.
-vi.mock("../src/submission/browser.js", () => ({
-  runApplicationForm: vi.fn(async () => ({
-    status: "submitted", reason: "test receipt", filledFields: [], unmatchedRequired: [], unusedAnswers: [],
-    screenshotPath: "test-receipt.png", finalUrl: "https://job-boards.greenhouse.io/acme/confirmation",
-    confirmationText: "Your application was received", captchaDetected: false,
-  })),
-}));
 
 /**
  * End-to-end test through a real MCP client: configuration loading, tool
@@ -84,7 +74,6 @@ const campaign = {
   locations: { allow: ["bay-area", "canada", "remote-canada"], workplaceTypes: ["onsite", "hybrid", "remote", "unknown"] },
   compensation: { currency: "USD", floors: { US: 200000, CA: 180000 }, fx: { USD: 1, CAD: 0.73 }, allowUnknown: true, rejectBelowFloor: true },
   scoring: { thresholds: { tierA: 80, tierB: 70, tierC: 60 } },
-  // No mode: the default, auto, is what this exercises.
   submission: { dailyLimit: 20, minDelaySeconds: 0 },
 };
 
@@ -191,23 +180,18 @@ describe("MCP server", () => {
     expect(instructions).not.toMatch(/without asking|never answer that you cannot/i);
   });
 
-  it("tells agents to submit by themselves and offers the mailbox two ways", () => {
+  it("tells agents to send applications with their own browser", () => {
     const instructions = (client.getInstructions() ?? "").replace(/\s+/g, " ");
-    expect(instructions).toContain("You submit by yourself");
-    expect(instructions).toContain("Never offer the person a menu of modes");
-    expect(instructions).not.toMatch(/\bmanual\b/i);
-    expect(instructions).toContain("connect that mailbox to the agent");
-    expect(instructions).toContain("passes the codes on by hand");
-    // The setup details belong in docs/CONFIGURATION.md, not the first ask.
-    expect(instructions).not.toMatch(/app password|forwarded verification mail/i);
+    expect(instructions).toContain("It never opens an employer's site");
+    expect(instructions).toContain("with your own browser");
+    expect(instructions).toContain("record_submission");
+    expect(instructions).not.toMatch(/\bmanual\b|assisted|IMAP|app password|provide_verification_code/i);
   });
 
-  it("defaults both submit tools to auto and offers no manual mode", async () => {
+  it("gives the submit tools no mode", async () => {
     const { tools } = await client.listTools();
     for (const name of ["submit_application", "submit_batch"]) {
-      const mode = tools.find((tool) => tool.name === name)!.inputSchema.properties!.mode as { enum: string[]; default: string };
-      expect(mode.enum).toEqual(["auto", "assisted"]);
-      expect(mode.default).toBe("auto");
+      expect(tools.find((tool) => tool.name === name)!.inputSchema.properties).not.toHaveProperty("mode");
     }
   });
 
@@ -226,7 +210,6 @@ describe("MCP server", () => {
         "explain_job",
         "list_applications",
         "list_batches",
-        "list_pending_gates",
         "list_queue",
         "list_rules",
         "list_sources",
@@ -235,7 +218,6 @@ describe("MCP server", () => {
         "prepare_batch",
         "preview_application",
         "preview_batch",
-        "provide_verification_code",
         "record_outcome",
         "record_submission",
         "reload_config",
@@ -293,17 +275,20 @@ describe("MCP server", () => {
     expect(autoFilled.find((entry) => entry.key === "email")?.answer).toBe("alex@example.com");
     expect(autoFilled.find((entry) => entry.key === "hear_about")?.answer).toBe("Careers page");
 
-    // Submitting before approval must be refused, auto mode included.
+    // Submitting before approval must be refused.
     const early = await callTool("submit_application", { applicationId });
     expect(early.isError).toBe(true);
     expect(early.text).toContain("not_approved");
-    expect(vi.mocked(runApplicationForm)).not.toHaveBeenCalled();
 
     const updated = parse(
       (
         await callTool("set_application_content", {
           applicationId,
-          answers: [{ questionKey: "sponsorship", answer: "Yes - I would need employer support for US work authorization." }],
+          answers: [
+            { questionKey: "sponsorship", answer: "Yes - I would need employer support for US work authorization." },
+            // A question the live form asks that the packet lacked, added by its label.
+            { label: "Preferred name", answer: "Alex", required: false },
+          ],
           coverLetter: "Short, specific letter.",
         })
       ).text,
@@ -316,6 +301,7 @@ describe("MCP server", () => {
     // reported elsewhere, never listed as a missing required answer.
     const preview = await callTool("preview_application", { applicationId });
     expect(preview.text).toContain("Unresolved required answers: none");
+    expect(preview.text).toContain("Preferred name");
     const packetHash = String(updated.packetHash);
 
     // A stale hash must not be accepted as approval.
@@ -328,20 +314,21 @@ describe("MCP server", () => {
     // The person was shown the packet itself, not just asked for a yes.
     expect(personShown.at(-1)).toContain(`Packet ${packetHash}`);
 
-    // A legacy "manual" request is not a mode any more.
-    const legacy = await callTool("submit_application", { applicationId, mode: "manual" });
-    expect(legacy.isError).toBe(true);
+    // The server hands the approved packet over; the agent's browser sends it.
+    const plan = parse((await callTool("submit_application", { applicationId })).text);
+    expect(plan.applyUrl).toBe("https://job-boards.greenhouse.io/acme/jobs/4001");
+    expect(plan.coverLetter).toBe("Short, specific letter.");
+    expect(plan.resumePath).toBe(fixtureResumePath());
+    const fields = plan.fields as Array<{ label: string; value: string }>;
+    expect(fields.find((field) => field.value === "alex@example.com")).toBeDefined();
+    expect(fields).toContainEqual({ label: "Preferred name", value: "Alex", required: false });
+    expect(plan.authorisedBy).toBe("approval");
+    expect(String(plan.nextStep)).toContain("record_submission");
 
-    // With no mode the server fills the form and presses submit itself.
-    const sent = parse((await callTool("submit_application", { applicationId })).text);
-    expect(sent.mode).toBe("auto");
-    expect(sent.result.status).toBe("submitted");
-    const [packet, options] = vi.mocked(runApplicationForm).mock.calls.at(-1)!;
-    expect(packet.applyUrl).toBe("https://job-boards.greenhouse.io/acme/jobs/4001");
-    expect(packet.coverLetter).toBe("Short, specific letter.");
-    expect(options.submit).toBe(true);
+    const recorded = parse((await callTool("record_submission", { applicationId, confirmationRef: "Application received" })).text);
+    expect(recorded.status).toBe("submitted");
 
-    // Already counted, so a hand-recorded duplicate is refused.
+    // Already counted, so a second record is refused.
     const duplicate = await callTool("record_submission", { applicationId, confirmationRef: "ack-1" });
     expect(duplicate.isError).toBe(true);
     expect(duplicate.text).toContain("already_submitted");
@@ -378,7 +365,6 @@ describe("MCP server", () => {
   it("reports configuration through reload_config", async () => {
     const config = parse((await callTool("reload_config")).text);
     expect(config.campaign).toBe("integration-campaign");
-    expect(config.submissionMode).toBe("auto");
     expect(config.tracks).toEqual(["ai-security"]);
   });
 });

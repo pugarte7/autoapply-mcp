@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocationClassSchema, SUBMISSION_MODES, type SubmissionMode } from "../domain/campaign.js";
+import { LocationClassSchema } from "../domain/campaign.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getWorkspace } from "../config/load.js";
 import { getApplication, saveApplication } from "../db/repositories/applications.js";
@@ -21,19 +21,12 @@ import { listActiveRules } from "../db/repositories/rules.js";
 import { prepareApplicationFor, type PreparedApplication } from "../drafting/prepare.js";
 import { autoFillableFields } from "../drafting/personal.js";
 import { answerOwner, type AnswerOwner } from "../drafting/answerOwner.js";
-import { runApplicationForm } from "../submission/browser.js";
-import { captchaNotifierFor, captchaWaitSecondsInput } from "../submission/captchaHandoff.js";
-import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
-import { authorisedBy, noteRulesUse, submissionGuard, type RunLedger } from "../submission/authorise.js";
+import { submissionGuard } from "../submission/authorise.js";
+import { handOff } from "../submission/handoff.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
 import { newId, nowIso } from "../util/hash.js";
 import { logger } from "../util/logger.js";
-import { abortedNextStep, fieldsToAnswer, formRunOptions, waitForCodeSecondsInput, type FieldToAnswer } from "./formRun.js";
 import { handler, ok } from "./helpers.js";
-import { join } from "node:path";
-import { recordRunResult } from "../submission/runRecording.js";
-import { DEFAULT_GATE_HOLD_MS, runHoldingGates, type GateHooks } from "../submission/sessions.js";
-import { awaitingCode, codeDeliveryFor } from "./submission.js";
 import { askPerson, batchQuestion, checkBatchManifest, packetFor, recordBatchApproval } from "../submission/approvals.js";
 
 /**
@@ -99,20 +92,6 @@ function prepareBatchNextStep(
   return ready === 0
     ? `Nothing is ready yet. ${unblockText} Then run prepare_batch again.`
     : `${unblockText} For the ${ready} ready now, ${approve}.`;
-}
-
-function submitBatchNextStep(remaining: number, stopped: number): string {
-  const retry =
-    stopped > 0
-      ? ` ${stopped} stopped short of submitting: follow each one's nextStep, answering its who=agent fieldsToAnswer yourself, and resubmit it with submit_application.`
-      : "";
-  return remaining > 0
-    ? `Approved applications remain. Call submit_batch again when their submission guards allow it.${retry}`
-    : `Batch run finished. Track responses with record_outcome.${retry}`;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function registerBatchTools(server: McpServer): void {
@@ -356,34 +335,16 @@ export function registerBatchTools(server: McpServer): void {
   server.registerTool(
     "submit_batch",
     {
-      title: "Submit an approved batch",
+      title: "Hand over the next application of an approved batch",
       description:
-        "Submits approved applications in the batch, re-running all per-application guards and honouring pacing and any configured daily limit. A null submission.dailyLimit disables only the daily ceiling. The campaign's submission.maxBatchSize still caps how many are submitted per run.",
+        "Runs every per-application guard over the batch's ready applications and hands you the first one allowed now, exactly as submit_application does. Send it with your browser, call record_submission, then call submit_batch again for the next. Pass skip with the ids you could not send this time (a CAPTCHA the person has not solved yet, for example).",
       inputSchema: {
         batchId: z.string().min(1),
-        mode: z.enum(SUBMISSION_MODES).default("auto"),
-        maxSubmissions: z.number().int().positive().max(200).optional(),
-        headless: z.boolean().optional(),
-        waitForCodeSeconds: waitForCodeSecondsInput,
-        codeDelivery: z
-          .enum(["wait", "handoff"])
-          .optional()
-          .describe(
-            "Auto mode, at an emailed-code or Workday-link gate: 'handoff' parks that application with its browser held (state awaiting_code) and moves on to the next; finish it with provide_verification_code. Same default as submit_application.",
-          ),
-        captchaWaitSeconds: captchaWaitSecondsInput,
+        skip: z.array(z.string()).optional().describe("Application ids to pass over in this call."),
       },
-      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
+      annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    handler(async (args: {
-      batchId: string;
-      mode?: SubmissionMode;
-      maxSubmissions?: number;
-      headless?: boolean;
-      waitForCodeSeconds?: number;
-      codeDelivery?: "wait" | "handoff";
-      captchaWaitSeconds?: number;
-    }) => {
+    handler(async (args: { batchId: string; skip?: string[] }) => {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
       if (!batch) throw new AppError("batch_not_found", `no batch ${args.batchId}`);
@@ -393,179 +354,52 @@ export function registerBatchTools(server: McpServer): void {
       if (batch.status !== "approved" && batch.status !== "submitting" && !byRulesOnly) {
         throw new AppError("batch_not_approved", `batch status is "${batch.status}"; approve it before submitting`);
       }
-      const ledger: RunLedger = new Map();
-
-      const mode = args.mode ?? "auto";
-      const policy = workspace.campaign.submission;
-      const cap = Math.min(
-        args.maxSubmissions ?? policy.maxBatchSize,
-        policy.maxBatchSize,
-        policy.dailyLimit ?? Number.POSITIVE_INFINITY,
-      );
+      const skip = new Set(args.skip ?? []);
       const ready = listBatchItems(workspace.db, batch.id, "ready");
-
-      setBatchStatus(workspace.db, batch.id, "submitting");
-
-      const results: Array<{
-        applicationId: string;
-        company: string;
-        outcome: string;
-        detail: string;
-        fieldsToAnswer?: FieldToAnswer[];
-        nextStep?: string;
-      }> = [];
-      const parked: Array<Record<string, unknown>> = [];
-      const handoff = mode === "auto" && codeDeliveryFor(args) === "handoff";
-      let submitted = 0;
-
-      for (const item of ready) {
-        if (submitted >= cap) {
-          results.push({ applicationId: item.applicationId, company: "", outcome: "deferred", detail: `cap of ${cap} reached` });
-          continue;
-        }
-
-        const { application, job, packet, currentHash } = packetFor(item.applicationId);
-        let guard = submissionGuard(workspace, application, job, currentHash, mode, ledger);
-
-        if (!guard.allowed) {
-          if (byRulesOnly && (guard.code === "not_approved" || guard.code === "rules_not_matched")) {
-            results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "awaiting_approval", detail: guard.reason });
-            continue;
-          }
-          if (guard.code === "daily_limit_reached" || guard.deferrable) {
-            results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "deferred", detail: guard.reason });
-            continue;
-          }
-          if (guard.code === "pacing" && guard.waitSeconds) {
-            await sleep(guard.waitSeconds * 1000);
-            // Checked again after the wait, so the submission carries the
-            // authorisation (and the rule caps) as they stand when it is sent.
-            guard = submissionGuard(workspace, application, job, currentHash, mode, ledger);
-            if (!guard.allowed) {
-              results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "deferred", detail: guard.reason });
-              continue;
-            }
-          } else {
-            setBatchItemState(workspace.db, batch.id, item.applicationId, "failed", guard.reason);
-            results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "blocked", detail: guard.reason });
-            appendEvent(workspace.db, "submission.blocked", application.id, { code: guard.code, batchId: batch.id });
-            continue;
-          }
-        }
-
-        try {
-          const options = formRunOptions(workspace, job, application.id, {
-            mode,
-            headless: args.headless,
-            keepOpenMs: 0,
-            waitForCodeSeconds: handoff ? DEFAULT_GATE_HOLD_MS / 1000 : args.waitForCodeSeconds,
-            captchaWaitSeconds: args.captchaWaitSeconds,
-            notifyPerson: captchaNotifierFor(server),
-          });
-          const start = (hooks: Partial<GateHooks> = {}) => runApplicationForm(packet, { ...options, ...hooks });
-          // A gated application is parked with its browser held, and finishes
-          // on its own once provide_verification_code (or the server's mailbox)
-          // supplies the code; the batch moves on rather than wait for it.
-          const authorised = guard;
-          const first = handoff
-            ? await runHoldingGates(application.id, { applyUrl: job.applyUrl, batchId: batch.id }, start, (late) => {
-                recordRunResult(getWorkspace(), {
-                  application,
-                  job,
-                  currentHash,
-                  mode,
-                  result: late,
-                  batchId: batch.id,
-                  authorisedBy: authorisedBy(authorised),
-                  onSubmitted: () => noteRulesUse(getWorkspace(), application.id, authorised, ledger),
-                });
-                const sent = late.status === "submitted";
-                setBatchItemState(getWorkspace().db, batch.id, application.id, sent ? "submitted" : "needs_human", sent ? late.finalUrl : late.reason);
-              })
-            : { result: await start() };
-          if ("held" in first) {
-            setBatchItemState(workspace.db, batch.id, application.id, "awaiting_code", first.held.prompt);
-            parked.push(awaitingCode(first.held));
-            results.push({ applicationId: application.id, company: job.companyName, outcome: "awaiting_code", detail: first.held.prompt });
-            // The form was sent, so pacing applies before the next one.
-            if (policy.minDelaySeconds > 0) await sleep(policy.minDelaySeconds * 1000);
-            continue;
-          }
-          const run = first.result;
-
-          if (run.status === "submitted") {
-            saveApplication(workspace.db, {
-              ...application,
-              packetHash: currentHash,
-              status: "submitted",
-              submittedAt: nowIso(),
-              submissionMode: mode,
-              confirmationRef: run.confirmationText.slice(0, 200),
-              artifactPath: run.screenshotPath,
-            });
-            setBatchItemState(workspace.db, batch.id, item.applicationId, "submitted", run.finalUrl);
-            noteRulesUse(workspace, application.id, guard, ledger);
-            appendEvent(workspace.db, "submission.submitted", application.id, {
-              batchId: batch.id,
-              company: job.companyName,
-              ...authorisedBy(guard),
-            });
-            submitted += 1;
-            results.push({ applicationId: application.id, company: job.companyName, outcome: "submitted", detail: run.finalUrl });
-          } else {
-            const answers = mergeDiscoveredQuestions(application.answers, run.unmatchedRequired, workspace.profile.answers);
-            const fields = fieldsToAnswer(answers);
-            saveApplication(workspace.db, {
-              ...application,
-              packetHash: currentHash,
-              status: "needs_human",
-              answers,
-              notes: `${application.notes}\n[${nowIso()}] ${run.reason}`.trim(),
-              artifactPath: run.screenshotPath,
-            });
-            setBatchItemState(workspace.db, batch.id, item.applicationId, "needs_human", run.reason);
-            results.push({
-              applicationId: application.id,
-              company: job.companyName,
-              outcome: run.status,
-              detail: run.reason,
-              ...(run.status === "aborted"
-                ? { fieldsToAnswer: fields, nextStep: abortedNextStep(run, fields, "submit it with submit_application") }
-                : {}),
-            });
-          }
-        } catch (error) {
-          const message = toErrorMessage(error);
-          // Too many browsers already held at gates: this one has not started,
-          // so it stays ready for the next submit_batch.
-          if (error instanceof AppError && (error.code === "too_many_gates" || error.code === "gate_pending")) {
-            results.push({ applicationId: application.id, company: job.companyName, outcome: "deferred", detail: message });
-            continue;
-          }
-          setBatchItemState(workspace.db, batch.id, item.applicationId, "failed", message);
-          results.push({ applicationId: application.id, company: job.companyName, outcome: "failed", detail: message });
-        }
-
-        if (policy.minDelaySeconds > 0 && submitted < cap) {
-          await sleep(policy.minDelaySeconds * 1000);
-        }
+      if (ready.length === 0) {
+        setBatchStatus(workspace.db, batch.id, "completed");
+        return ok({ batchId: batch.id, remaining: 0, nextStep: "Every application in the batch is done. Track responses with record_outcome." });
       }
 
-      const remaining = listBatchItems(workspace.db, batch.id, "ready").length;
-      setBatchStatus(workspace.db, batch.id, remaining === 0 ? "completed" : byRulesOnly ? "prepared" : "approved");
-      appendEvent(workspace.db, "batch.submitted", batch.id, { mode, submitted, remaining });
-
+      const held: Array<{ applicationId: string; company: string; outcome: string; detail: string; waitSeconds?: number }> = [];
+      for (const item of ready) {
+        if (skip.has(item.applicationId)) continue;
+        const { application, job, packet, currentHash } = packetFor(item.applicationId);
+        const guard = submissionGuard(workspace, application, job, currentHash);
+        if (guard.allowed) {
+          if (batch.status !== "submitting") setBatchStatus(workspace.db, batch.id, "submitting");
+          return ok({
+            batchId: batch.id,
+            remaining: ready.length,
+            next: handOff(workspace, application, job, packet, guard, batch.id),
+            ...(held.length > 0 ? { held } : {}),
+          });
+        }
+        const waits =
+          guard.code === "pacing" || guard.code === "daily_limit_reached" || guard.deferrable ||
+          (byRulesOnly && (guard.code === "not_approved" || guard.code === "rules_not_matched"));
+        if (!waits) {
+          setBatchItemState(workspace.db, batch.id, item.applicationId, "failed", guard.reason);
+          appendEvent(workspace.db, "submission.blocked", application.id, { code: guard.code, batchId: batch.id });
+        }
+        held.push({
+          applicationId: item.applicationId,
+          company: job.companyName,
+          outcome: waits ? "waiting" : "blocked",
+          detail: guard.reason,
+          ...(guard.waitSeconds ? { waitSeconds: guard.waitSeconds } : {}),
+        });
+        // Pacing holds every application alike, so the rest need not be checked.
+        if (guard.code === "pacing" || guard.code === "daily_limit_reached") break;
+      }
+      const pacing = held.find((entry) => entry.waitSeconds);
       return ok({
         batchId: batch.id,
-        mode,
-        submitted,
-        remaining,
-        results,
-        ...(parked.length > 0 ? { awaitingCode: parked } : {}),
-        nextStep:
-          parked.length > 0
-            ? `${parked.length} application(s) are held at a verification gate. For each one in awaitingCode, read the newest email from its sender received after its emailedAt and call provide_verification_code; do not submit them again.`
-            : submitBatchNextStep(remaining, results.filter((result) => result.fieldsToAnswer !== undefined).length),
+        remaining: listBatchItems(workspace.db, batch.id, "ready").length,
+        held,
+        nextStep: pacing
+          ? `Pacing: wait ${pacing.waitSeconds}s, then call submit_batch again.`
+          : "Nothing can be sent right now; each entry in held says why.",
       });
     }),
   );

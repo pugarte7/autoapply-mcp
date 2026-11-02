@@ -1,13 +1,10 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getWorkspace } from "../config/load.js";
-import { readVerificationInboxConfig } from "../submission/verificationInbox.js";
 import { toErrorMessage } from "../util/errors.js";
 import { buildAgenda } from "./agenda.js";
-import { computeLessons } from "./lessons.js";
 import {
   AGENDA_URI,
-  LESSONS_URI,
   PROMPTS,
   dailyApplyText,
   onboardText,
@@ -16,8 +13,7 @@ import {
 
 /**
  * Agent-facing surface beyond tools: the loops as prompts, and the state an
- * agent needs at the start of each loop as resources. See docs/HARNESS.md for
- * why these and not others.
+ * agent needs at the start of each loop as resources.
  */
 
 function userMessage(text: string) {
@@ -87,18 +83,7 @@ export function registerHarness(server: McpServer): void {
         "Applications held for a person and the questions holding them, today's submission budget, and profile fields whose absence will block forms.",
       mimeType: "application/json",
     },
-    (uri) => json(uri, () => buildAgenda(getWorkspace(), readVerificationInboxConfig() !== null)),
+    (uri) => json(uri, () => buildAgenda(getWorkspace())),
   );
 
-  server.registerResource(
-    "lessons",
-    LESSONS_URI,
-    {
-      title: "Lessons from past runs",
-      description:
-        "Per ATS, how submission attempts ended (CAPTCHA, verification code, unfilled field, refused), the employer questions that most often needed a person, and what to do about each.",
-      mimeType: "application/json",
-    },
-    (uri) => json(uri, () => computeLessons(getWorkspace().db, { verificationInboxConfigured: readVerificationInboxConfig() !== null })),
-  );
 }

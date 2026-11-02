@@ -8,17 +8,6 @@ import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { fixtureResumePath } from "./factories.js";
-import { runApplicationForm } from "../src/submission/browser.js";
-
-// No real board is ever opened: the browser run is replaced by a receipt, so
-// the test sees what the tools do around it.
-vi.mock("../src/submission/browser.js", () => ({
-  runApplicationForm: vi.fn(async () => ({
-    status: "submitted", reason: "test receipt", filledFields: [], unmatchedRequired: [], unusedAnswers: [],
-    screenshotPath: "test-receipt.png", finalUrl: "https://job-boards.greenhouse.io/acme/confirmation",
-    confirmationText: "Your application was received", captchaDetected: false,
-  })),
-}));
 
 /** End-to-end batch flow: prepare many, review, approve as a set, submit. */
 
@@ -81,7 +70,6 @@ const campaign = {
   locations: { allow: ["bay-area"], workplaceTypes: ["onsite", "hybrid", "remote", "unknown"] },
   compensation: { currency: "USD", floors: { US: 200000 }, fx: { USD: 1 }, allowUnknown: true, rejectBelowFloor: true },
   scoring: { thresholds: { tierA: 80, tierB: 70, tierC: 60 } },
-  // No mode: the default, auto, is what this exercises.
   submission: { dailyLimit: 20, minDelaySeconds: 0 },
 };
 
@@ -211,15 +199,18 @@ describe("batch workflow", () => {
     expect(personShown).toHaveLength(1);
     expect(personShown[0]).toContain("Send these 2 application(s)?");
 
-    // No mode passed: submit_batch submits by itself.
-    const submitted = parse((await callTool("submit_batch", { batchId })).text);
-    expect(submitted.mode).toBe("auto");
-    expect(submitted.submitted).toBe(2);
-    expect(submitted.results.map((entry: { outcome: string }) => entry.outcome)).toEqual(["submitted", "submitted"]);
-    expect(submitted.manualPackets).toBeUndefined();
-    const runs = vi.mocked(runApplicationForm).mock.calls;
-    expect(runs).toHaveLength(2);
-    expect(runs.every(([, options]) => options.submit === true)).toBe(true);
+    // Each application is handed over in turn; the agent sends it and records it.
+    const first = parse((await callTool("submit_batch", { batchId })).text);
+    expect(first.remaining).toBe(2);
+    expect(first.next.applyUrl).toMatch(/^https:\/\/job-boards\.greenhouse\.io\//);
+    // Skipped (say a CAPTCHA the person has not solved), the next one comes instead.
+    const other = parse((await callTool("submit_batch", { batchId, skip: [first.next.applicationId] })).text);
+    expect(other.next.applicationId).not.toBe(first.next.applicationId);
+    for (const handed of [first, other]) {
+      await callTool("record_submission", { applicationId: handed.next.applicationId, confirmationRef: "received" });
+    }
+    const done = parse((await callTool("submit_batch", { batchId })).text);
+    expect(done.remaining).toBe(0);
 
     const batches = parse((await callTool("list_batches")).text);
     expect(batches.batches[0].batchId).toBe(batchId);

@@ -63,30 +63,21 @@ export const CompensationPolicySchema = z.object({
   rejectBelowFloor: z.boolean().default(true),
 });
 
-export const SUBMISSION_MODES = ["auto", "assisted"] as const;
-export type SubmissionMode = (typeof SUBMISSION_MODES)[number];
-/** The removed mode, still accepted on load and read as "auto". */
-export const LEGACY_MANUAL_MODE = "manual";
-
 export const SubmissionPolicySchema = z.object({
   /**
-   * auto     - the agent fills and submits approved applications by itself
-   * assisted - server fills the form in a visible window, a person presses submit
-   *
-   * A "manual" mode used to return the packet for a person to send. It was
-   * removed so the agent does the work end to end; a config file written
-   * before that still says "manual", and failing to load it would strand the
-   * whole campaign over one word, so it reads as "auto" and `doctor` warns.
-   * Nothing is sent without approval either way: the guards still demand it.
+   * Hosts an approved application may be sent to. The agent submits through
+   * its own browser, so this is what stops a doctored posting or a redirect
+   * from pointing it somewhere else.
    */
-  mode: z
-    .preprocess((value) => (value === LEGACY_MANUAL_MODE ? "auto" : value), z.enum(SUBMISSION_MODES))
-    .default("auto"),
   allowedAtsDomains: z.array(nonEmpty).default([
     "boards.greenhouse.io",
     "job-boards.greenhouse.io",
     "jobs.lever.co",
     "jobs.ashbyhq.com",
+    "myworkdayjobs.com",
+    "jobs.smartrecruiters.com",
+    "apply.workable.com",
+    "recruitee.com",
   ]),
   allowedCompanies: z.array(nonEmpty).default([]),
   /** Null explicitly disables the daily ceiling; other submission guards still apply. */
@@ -125,7 +116,6 @@ export const SubmissionPolicySchema = z.object({
     "essay",
     "reference",
   ]),
-  captureScreenshots: z.boolean().default(true),
 });
 
 export const CampaignSchema = z.object({
@@ -180,8 +170,8 @@ export type SubmissionPolicy = z.infer<typeof SubmissionPolicySchema>;
 
 /**
  * `google`, `meta`, `amazon` and `apple` are the employers' own career sites.
- * They only take applications from a signed-in account, so submitting to them
- * runs in a browser profile the candidate signed in to by hand.
+ * They only take applications from a signed-in account, so the agent's browser
+ * has to be signed in as the candidate.
  */
 export const AtsKindSchema = z.enum([
   "greenhouse",
