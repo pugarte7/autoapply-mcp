@@ -3,6 +3,7 @@ import { registerBatchTools } from "./tools/batch.js";
 import { registerDiscoveryTools } from "./tools/discovery.js";
 import { registerDraftingTools } from "./tools/drafting.js";
 import { registerSubmissionTools } from "./tools/submission.js";
+import { registerRulesTools } from "./tools/rules.js";
 import { registerTrackingTools } from "./tools/tracking.js";
 import { registerSourceSearchTools } from "./tools/sourceSearch.js";
 
@@ -78,6 +79,7 @@ export function createServer(): McpServer {
   registerDraftingTools(server);
   registerBatchTools(server);
   registerSubmissionTools(server);
+  registerRulesTools(server);
   registerTrackingTools(server);
 
   return server;

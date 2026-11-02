@@ -2,13 +2,7 @@ import { z } from "zod";
 import { LocationClassSchema } from "../domain/campaign.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getWorkspace } from "../config/load.js";
-import {
-  countSubmittedSince,
-  getApplication,
-  lastSubmissionAt,
-  latestApproval,
-  saveApplication,
-} from "../db/repositories/applications.js";
+import { getApplication, saveApplication } from "../db/repositories/applications.js";
 import {
   batchSummary,
   computeManifestHash,
@@ -22,12 +16,13 @@ import {
   type BatchItem,
 } from "../db/repositories/batches.js";
 import { appendEvent } from "../db/repositories/events.js";
-import { applicationCountsByCompany, getEvaluation, getJob, listQueue } from "../db/repositories/jobs.js";
+import { getEvaluation, getJob, listQueue } from "../db/repositories/jobs.js";
+import { listActiveRules } from "../db/repositories/rules.js";
 import { prepareApplicationFor } from "../drafting/prepare.js";
 import { autoFillableFields } from "../drafting/personal.js";
 import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
-import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
+import { authorisedBy, noteRulesUse, submissionGuard, type RunLedger } from "../submission/authorise.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
 import { newId, nowIso } from "../util/hash.js";
 import { logger } from "../util/logger.js";
@@ -324,9 +319,13 @@ export function registerBatchTools(server: McpServer): void {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
       if (!batch) throw new AppError("batch_not_found", `no batch ${args.batchId}`);
-      if (batch.status !== "approved" && batch.status !== "submitting") {
+      // A batch nobody approved can still hold applications standing rules
+      // cover; each one is checked against them below, and the rest wait.
+      const byRulesOnly = batch.status === "prepared" && listActiveRules(workspace.db).length > 0;
+      if (batch.status !== "approved" && batch.status !== "submitting" && !byRulesOnly) {
         throw new AppError("batch_not_approved", `batch status is "${batch.status}"; approve it before submitting`);
       }
+      const ledger: RunLedger = new Map();
 
       const mode = args.mode ?? "manual";
       const policy = workspace.campaign.submission;
@@ -350,24 +349,26 @@ export function registerBatchTools(server: McpServer): void {
         }
 
         const { application, job, packet, currentHash } = packetFor(item.applicationId);
-        const guard = checkSubmissionAllowed({
-          application: { ...application, packetHash: currentHash },
-          job,
-          campaign: workspace.campaign,
-          approval: latestApproval(workspace.db, application.id),
-          submittedToday: countSubmittedSince(workspace.db, startOfDayIso()),
-          companyApplicationCount: applicationCountsByCompany(workspace.db).get(job.companyName.toLowerCase()) ?? 0,
-          lastSubmissionAt: lastSubmissionAt(workspace.db),
-          requestedMode: mode,
-        });
+        let guard = submissionGuard(workspace, application, job, currentHash, mode, ledger);
 
         if (!guard.allowed) {
-          if (guard.code === "daily_limit_reached") {
+          if (byRulesOnly && (guard.code === "not_approved" || guard.code === "rules_not_matched")) {
+            results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "awaiting_approval", detail: guard.reason });
+            continue;
+          }
+          if (guard.code === "daily_limit_reached" || guard.deferrable) {
             results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "deferred", detail: guard.reason });
             continue;
           }
           if (guard.code === "pacing" && guard.waitSeconds) {
             await sleep(guard.waitSeconds * 1000);
+            // Checked again after the wait, so the submission carries the
+            // authorisation (and the rule caps) as they stand when it is sent.
+            guard = submissionGuard(workspace, application, job, currentHash, mode, ledger);
+            if (!guard.allowed) {
+              results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "deferred", detail: guard.reason });
+              continue;
+            }
           } else {
             setBatchItemState(workspace.db, batch.id, item.applicationId, "failed", guard.reason);
             results.push({ applicationId: item.applicationId, company: job.companyName, outcome: "blocked", detail: guard.reason });
@@ -415,7 +416,12 @@ export function registerBatchTools(server: McpServer): void {
               artifactPath: run.screenshotPath,
             });
             setBatchItemState(workspace.db, batch.id, item.applicationId, "submitted", run.finalUrl);
-            appendEvent(workspace.db, "submission.submitted", application.id, { batchId: batch.id, company: job.companyName });
+            noteRulesUse(workspace, application.id, guard, ledger);
+            appendEvent(workspace.db, "submission.submitted", application.id, {
+              batchId: batch.id,
+              company: job.companyName,
+              ...authorisedBy(guard),
+            });
             submitted += 1;
             results.push({ applicationId: application.id, company: job.companyName, outcome: "submitted", detail: run.finalUrl });
           } else {
@@ -446,7 +452,7 @@ export function registerBatchTools(server: McpServer): void {
       }
 
       const remaining = listBatchItems(workspace.db, batch.id, "ready").length;
-      setBatchStatus(workspace.db, batch.id, remaining === 0 ? "completed" : "approved");
+      setBatchStatus(workspace.db, batch.id, remaining === 0 ? "completed" : byRulesOnly ? "prepared" : "approved");
       appendEvent(workspace.db, "batch.submitted", batch.id, { mode, submitted, remaining });
 
       return ok({

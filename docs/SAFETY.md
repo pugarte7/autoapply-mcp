@@ -4,7 +4,7 @@ This server automates a process that has real consequences: a bad submission rea
 
 ## The approval boundary
 
-Discovery, gating, scoring and drafting are fully automated. Submission is not.
+Discovery, gating, scoring and drafting are fully automated. Submission needs a decision by the person: either on the packet itself, on the batch that holds it, or on a set of standing rules they approved ahead of time that cover it.
 
 `submit_application` re-checks every one of these before anything reaches an employer:
 
@@ -12,7 +12,9 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 |---|---|
 | Application already sent | `already_submitted` |
 | Requested mode exceeds the campaign's configured mode | `mode_not_permitted` |
-| No recorded human approval | `not_approved` |
+| No recorded human approval, and no active standing rules | `not_approved` |
+| Active standing rules exist, but none covers this application | `rules_not_matched` |
+| The covering rules have used their daily or per-run allowance | `rules_daily_cap_reached`, `rules_run_cap_reached` |
 | Content changed since approval | `packet_changed` |
 | A question needing a human is still unanswered | `unresolved_questions` |
 | Destination host is not allowlisted | `destination_not_allowed` |
@@ -23,6 +25,24 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 Approval binds to a SHA-256 hash of the exact packet: job, apply URL, resume, cover letter and every answer. Change one character and the previous approval no longer applies.
 
 The hash proves what was approved, not who approved it: the model reads it from `preview_application` and could hand it straight back. So `approve_application` and `approve_batch` ask the person themselves, through the client's approval dialog (MCP elicitation), and record nothing unless they say yes. A client with no such dialog is refused with a command for the person's own terminal, `dist/cli/approve.js`, which will not run without a terminal on both ends, so an agent's shell tool cannot answer for them.
+
+### Standing rules
+
+Approving every packet keeps a person at the keyboard, so an agent could never run on its own. Standing rules move that decision earlier: the person approves, once, a description of what may be sent, and a packet that fits it goes out without another question.
+
+`approve_rules` stores the agent's proposal and shows the person a summary of it, through the same dialog or `node dist/cli/approve.js rules <rulesId> <rulesHash>`. The proposal authorises nothing until they say yes, and the hash ties their yes to the rules they read. The agent cannot record rules itself, any more than it can approve a packet. Each rule set records whether it was approved in the dialog or the terminal, and expires after 30 days by default and 90 at most. `revoke_rules` ends it at once, with no confirmation.
+
+A rule set covers an application only when all of these hold:
+
+- the posting passed the campaign gates, and its tier, score, track, company and board are inside the rules
+- every question in a person-only category (work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, legal attestations) carries a standing answer the person recorded in `profile.answers` or `profile.personal` with auto-fill. An answer passed through `set_application_content` never counts, whatever source it is labelled with, because the agent calls that tool. Trimming `blockedQuestionCategories` in the campaign does not hand these categories to the rules
+- no suggestion the drafting engine flagged for a person is still unconfirmed
+- a cover letter or essay the agent wrote is only sent when the rules say `allowAgentDraftedText: true`
+- the rule set has room left under its `maxPerDay` and `maxPerRun`
+
+Everything else in the table above still applies to a rules-authorised application: campaign mode, allowed destinations, exclusions, the company allowlist for auto mode, the per-company cap, the daily limit, pacing, the resume check and unresolved questions. A packet the person rejected stays rejected, and one they approved and that changed afterwards is refused as `packet_changed`, rules or not. Every submission's audit event says whether a packet approval or which rule set authorised it.
+
+What the person gives up is honest to state: answers to ordinary questions that the agent wrote from the profile and CV, and with `allowAgentDraftedText` its cover letters and essays, reach the employer without being read first. Keep the rules narrow, and read the daily digest.
 
 ## Truthfulness
 
@@ -192,7 +212,7 @@ submissions.
 - Solve or evade anti-bot challenges
 - Fabricate experience, skills, dates or metrics
 - Answer immigration, compensation, demographic or legal questions on your behalf
-- Submit without a recorded, content-bound human approval
+- Submit without a human decision: an approval bound to the packet's content, or standing rules the person approved that cover it
 
 ## Residual risks you own
 
