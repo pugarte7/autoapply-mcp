@@ -12,6 +12,7 @@ import { AppError, toErrorMessage } from "../util/errors.js";
 import { newId, nowIso } from "../util/hash.js";
 import { logger } from "../util/logger.js";
 import { draftAnswers, type FormQuestion } from "./answers.js";
+import { answerOwner, type AnswerOwner } from "./answerOwner.js";
 import { carryEmployerAnswers } from "./employerAnswers.js";
 import { buildMatchReport, selectResume, type MatchReport } from "./matchReport.js";
 import { ashbyQuestionsToForm, defaultQuestionSet, greenhouseQuestionsToForm, leverQuestionsToForm } from "./questions.js";
@@ -32,8 +33,19 @@ export type PreparedApplication = {
    * `options` are the choices the board offers. Without them whoever answers
    * writes free text: "Yes" for Cabify's "Daily / Occasionally / Rarely / Not
    * yet" left a required dropdown empty at fill time.
+   *
+   * `who` says whether the agent answers it from the profile or only the
+   * person can. See answerOwner.ts.
    */
-  outstanding: Array<{ key: string; label: string; category: string; suggested: string; guidance: string; options: string[] }>;
+  outstanding: Array<{
+    key: string;
+    label: string;
+    category: string;
+    who: AnswerOwner;
+    suggested: string;
+    guidance: string;
+    options: string[];
+  }>;
   autoFilled: Array<{ key: string; label: string; answer: string; citation: string }>;
 };
 
@@ -145,6 +157,7 @@ export async function prepareApplicationFor(
         key: answer.questionKey,
         label: answer.label,
         category: answer.category,
+        who: answerOwner(answer.label, answer.category),
         suggested: answer.answer,
         guidance: answer.guidance,
         options: optionsByKey.get(answer.questionKey) ?? [],

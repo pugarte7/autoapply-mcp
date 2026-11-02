@@ -7,6 +7,7 @@ import { applicationCountsByCompany, getEvaluation, getJob } from "../db/reposit
 import type { Application, DraftAnswer } from "../domain/job.js";
 import { unresolvedRequired, type FormQuestion } from "../drafting/answers.js";
 import { prepareApplicationFor } from "../drafting/prepare.js";
+import type { AnswerOwner } from "../drafting/answerOwner.js";
 import { computePacketHash, renderPacketPreview, type SubmissionPacket } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
 import { handler, ok, okText } from "./helpers.js";
@@ -25,6 +26,27 @@ function buildPacket(application: Application, job: { companyName: string; title
     coverLetter: application.coverLetter,
     answers: application.answers,
   };
+}
+
+/**
+ * "Answer the flagged questions" read as "ask the person the flagged
+ * questions", so every essay and every fact already in the CV became a
+ * message to them. The step now says which ones are the agent's to write.
+ */
+export function outstandingNextStep(outstanding: ReadonlyArray<{ who: AnswerOwner }>): string {
+  const approve = "preview_application, then approve_application, which asks the person through the approval dialog";
+  if (outstanding.length === 0) return `Review with ${approve}.`;
+  const agent = outstanding.filter((question) => question.who === "agent").length;
+  const person = outstanding.length - agent;
+  const steps = [
+    agent > 0
+      ? `Write the ${agent} answer${agent === 1 ? "" : "s"} marked who=agent yourself from the match report's facts (cite fact ids, never claim anything in claimsToAvoid) and record them with set_application_content.`
+      : "",
+    person > 0
+      ? `Only the person can answer the ${person} marked who=person: gather them with every other pending application's into one message, then record their answers with set_application_content.`
+      : "",
+  ].filter((step) => step.length > 0);
+  return `${steps.join(" ")} Then ${approve}.`;
 }
 
 export function registerDraftingTools(server: McpServer): void {
@@ -99,10 +121,8 @@ export function registerDraftingTools(server: McpServer): void {
         questionsNeedingHuman: prepared.outstanding,
         autoFilledAnswers: prepared.autoFilled,
         nextStep: !resumeCheck.ok
-          ? `Resume unusable: ${resumeCheck.reason}. Fix the file or profile.resumes path, then run prepare_application again.`
-          : prepared.outstanding.length > 0
-            ? "Answer the flagged questions with set_application_content, then approve_application."
-            : "Review with preview_application, then approve_application.",
+          ? `Resume unusable: ${resumeCheck.reason}. If you can reach the CV, point profile.resumes[].path at a valid PDF yourself; only if you cannot, ask the person for it. Then run prepare_application again.`
+          : outstandingNextStep(prepared.outstanding),
       });
     }),
   );
