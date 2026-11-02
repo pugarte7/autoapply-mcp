@@ -59,7 +59,7 @@ const baseInput = {
   approval,
   submittedToday: 0,
   lastSubmissionAt: null,
-  requestedMode: "manual" as const,
+  requestedMode: "auto" as const,
 };
 
 describe("checkUrlAllowed", () => {
@@ -76,12 +76,18 @@ describe("checkUrlAllowed", () => {
 });
 
 describe("checkSubmissionAllowed", () => {
-  it("allows a fully approved manual submission", () => {
+  it("allows a fully approved auto submission under the default campaign", () => {
+    expect(campaign.submission.mode).toBe("auto");
     expect(checkSubmissionAllowed(baseInput).allowed).toBe(true);
   });
 
-  it("refuses without an approval record", () => {
-    const result = checkSubmissionAllowed({ ...baseInput, approval: null });
+  it.each(["auto", "assisted"] as const)("still refuses %s without an approval record", (requestedMode) => {
+    const result = checkSubmissionAllowed({ ...baseInput, approval: null, requestedMode });
+    expect(result.code).toBe("not_approved");
+  });
+
+  it("refuses an approval that was declined, in auto mode too", () => {
+    const result = checkSubmissionAllowed({ ...baseInput, approval: { ...approval, decision: "rejected" } });
     expect(result.code).toBe("not_approved");
   });
 
@@ -135,12 +141,19 @@ describe("checkSubmissionAllowed", () => {
   });
 
   it("refuses a mode stronger than the campaign allows", () => {
-    const result = checkSubmissionAllowed({ ...baseInput, requestedMode: "auto" });
+    const assisted = makeCampaign({ submission: { mode: "assisted" } });
+    const result = checkSubmissionAllowed({ ...baseInput, campaign: assisted, requestedMode: "auto" });
     expect(result.code).toBe("mode_not_permitted");
   });
 
-  it.each(["smartrecruiters", "workable", "recruitee"] as const)(
-    "keeps %s discovery separate from browser submission permission",
+  it("lets a call ask for assisted under an auto campaign", () => {
+    // The person may want to watch or press submit themselves; assisted is the
+    // lesser mode, so an auto ceiling permits it.
+    expect(checkSubmissionAllowed({ ...baseInput, requestedMode: "assisted" }).allowed).toBe(true);
+  });
+
+  it.each(["smartrecruiters", "workable", "recruitee", "apple"] as const)(
+    "refuses %s, which has no browser submission, and points at record_submission",
     (ats) => {
       const input = {
         ...baseInput,
@@ -149,9 +162,15 @@ describe("checkSubmissionAllowed", () => {
           submission: { mode: "auto", allowedAtsDomains: ["apply.example.com"], allowedCompanies: [job.companyName] },
         }),
       };
-      expect(checkSubmissionAllowed(input).allowed).toBe(true);
-      expect(checkSubmissionAllowed({ ...input, requestedMode: "assisted" }).code).toBe("ats_browser_not_supported");
-      expect(checkSubmissionAllowed({ ...input, requestedMode: "auto" }).code).toBe("ats_browser_not_supported");
+      for (const requestedMode of ["auto", "assisted"] as const) {
+        const result = checkSubmissionAllowed({ ...input, requestedMode });
+        expect(result.code).toBe("ats_browser_not_supported");
+        expect(result.reason).toContain("https://apply.example.com/job/1");
+        expect(result.reason).toContain("record_submission");
+      }
+      // Said before approval is looked at, so the agent does not chase one for
+      // a packet that could never be sent.
+      expect(checkSubmissionAllowed({ ...input, approval: null }).code).toBe("ats_browser_not_supported");
     },
   );
 
@@ -241,6 +260,16 @@ describe("checkSubmissionAllowed", () => {
     });
     const result = checkSubmissionAllowed({ ...baseInput, campaign: autoCampaign, requestedMode: "auto" });
     expect(result.code).toBe("company_not_allowlisted");
+  });
+
+  it("does not restrict auto mode when allowedCompanies is empty", () => {
+    expect(campaign.submission.allowedCompanies).toEqual([]);
+    expect(checkSubmissionAllowed({ ...baseInput, requestedMode: "auto" }).allowed).toBe(true);
+  });
+
+  it("does not restrict assisted mode to allowlisted companies", () => {
+    const narrowed = makeCampaign({ submission: { allowedCompanies: ["Other Corp"] } });
+    expect(checkSubmissionAllowed({ ...baseInput, campaign: narrowed, requestedMode: "assisted" }).allowed).toBe(true);
   });
 });
 

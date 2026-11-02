@@ -21,9 +21,11 @@ OpenRouter does not pass `tools` to it.
 - Every `fetch` is fenced: OpenRouter and the fixture Greenhouse board in
   `world.ts` get through, anything else gets a 403 and is listed under
   "Blocked requests".
-- The campaign's mode is `manual`, so `assisted` and `auto` are refused with
-  `mode_not_permitted` before a browser opens. A manual submission only
-  returns a packet for a person to send.
+- No submission reaches a browser. The campaign is in `auto` mode, the
+  default, but the eval client has no approval dialog, so no approval can be
+  recorded and every submit is refused with `not_approved`; and no apply URL
+  is on the campaign's destination allowlist, so an approved packet would
+  still stop at `destination_not_allowed`.
 - Each run gets a fresh temporary workspace with a made-up candidate, deleted
   afterwards.
 

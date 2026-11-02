@@ -133,15 +133,14 @@ Runs every guard, then acts according to mode.
 | Input | Type | Notes |
 |---|---|---|
 | `applicationId` | `string` | |
-| `mode` | `"manual" \| "assisted" \| "auto"` | Cannot exceed the campaign's configured mode |
+| `mode` | `"auto" \| "assisted"` | Defaults to `auto`; cannot exceed the campaign's configured mode |
 | `headless` | `boolean?` | Ignored in assisted mode |
 | `keepOpenSeconds` | `number?` | Assisted mode: how long to leave the filled form open (at most 1800) |
 | `verificationCode` | `string?` | The one-time code the board emailed after a previous attempt hit its gate; each attempt emails a new one |
 | `waitForCodeSeconds` | `number?` | Hold the browser at a verification gate for this long (at most 1800) while the code is read from `<artifacts>/<applicationId>.code` or the configured mailbox; also bounds the wait for Workday's account-verification link |
 
-- `manual` returns the packet and apply URL for you to submit.
-- `assisted` fills the hosted form in a visible browser, screenshots it, and leaves it open for you to review and submit. If your submission reaches the board's confirmation page during the hold, the run returns at once and records it as submitted with that page as evidence; otherwise it returns `prepared` and you call `record_submission` yourself.
-- `auto` fills and clicks submit. Requires campaign mode `auto`, an allowlisted company, every required field fillable, and no unresolved questions.
+- `auto` (the default) fills and clicks submit. Requires campaign mode `auto`, every required field fillable, no unresolved questions and, when `submission.allowedCompanies` lists companies, one of them.
+- `assisted` fills the hosted form in a visible browser, screenshots it, and leaves it open for you to review and submit. If your submission reaches the board's confirmation page during the hold, the run returns at once and records it as submitted with that page as evidence; otherwise it returns `prepared` and you call `record_submission` yourself. Agents use it only when the person asks to watch or to submit themselves.
 
 Greenhouse and Workday gate submission behind an emailed code or link that only
 lives as long as the attempt that requested it. Link a mailbox before the first
@@ -150,12 +149,12 @@ submission (`AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD`, see
 `waitForCodeSeconds`; without it the run stops at the gate and a person writes the
 code to `<artifacts>/<applicationId>.code` while it waits.
 
-SmartRecruiters, Workable and Recruitee are discovery-only integrations.
-`assisted` and `auto` fail with `ats_browser_not_supported`; manual packets remain
-subject to all existing destination, approval and campaign guards.
+SmartRecruiters, Workable, Recruitee and Apple are discovery-only integrations.
+Submitting to them fails with `ats_browser_not_supported`; the person applies at
+the posting's URL themselves and the agent then calls `record_submission`.
 
 ### `record_submission`
-Marks an application submitted after you sent it manually, keeping counts, pacing and duplicate checks accurate.
+Marks an application submitted after the person sent it themselves (a board without browser submission, or an assisted run they finished), keeping counts, pacing and duplicate checks accurate.
 
 ## Batch operations
 
@@ -182,7 +181,7 @@ Every application in the batch with company, role, compensation, readiness and w
 Asks the person to approve every ready application, listed by company and title, and records an approval for each on their yes. Requires `batchId`, `manifestHash` and `expectedCount`; a mismatch in either fails with `manifest_mismatch` or `count_mismatch` before anyone is asked. Without an approval dialog in the client, the person runs `node dist/cli/approve.js --batch <batchId> <manifestHash> <count>`.
 
 ### `submit_batch`
-Submits the approved set in `manual`, `assisted` or `auto` mode, re-running all
+Submits the approved set in `auto` (default) or `assisted` mode, re-running all
 guards per application and honouring pacing and any configured daily limit.
 `submission.dailyLimit: null` removes the daily ceiling, not per-batch,
 per-company, approval or destination checks.
@@ -190,7 +189,7 @@ per-company, approval or destination checks.
 | Input | Type |
 |---|---|
 | `batchId` | `string` |
-| `mode` | `"manual" \| "assisted" \| "auto"` |
+| `mode` | `"auto" \| "assisted"`, default `auto` |
 | `maxSubmissions` | `number?` — defaults to `submission.maxBatchSize`; always capped by that setting |
 | `headless` | `boolean?` |
 
@@ -206,7 +205,7 @@ Appends an outcome: `acknowledged`, `recruiter_screen`, `interview`, `offer`, `r
 Applications with status, target role and outcome history. Optional `status` and `limit` filters.
 
 ### `audit_log`
-Recent recorded events with redacted payloads. Event types include `discovery.run`, `application.prepared`, `application.updated`, `application.approval`, `submission.manual_packet`, `submission.prepared`, `submission.submitted`, `submission.aborted`, `submission.blocked`, `submission.recorded` and `outcome.recorded`.
+Recent recorded events with redacted payloads. Event types include `discovery.run`, `application.prepared`, `application.updated`, `application.approval`, `submission.prepared`, `submission.submitted`, `submission.aborted`, `submission.blocked`, `submission.recorded` and `outcome.recorded`.
 
 ### `reload_config`
 Re-reads all three configuration files so edits apply without restarting the server.

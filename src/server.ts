@@ -25,7 +25,7 @@ Single-application workflow:
   5. set_application_content - supply the cover letter and any answers a human must decide
   6. preview_application  - see the exact packet and its hash
   7. approve_application  - ask the person to approve that exact packet; they answer, not you
-  8. submit_application   - submit under the campaign's submission mode
+  8. submit_application   - submit it; the server fills the form and presses submit by itself
   9. record_outcome       - track responses
 
 High-volume workflow:
@@ -48,18 +48,22 @@ Rules this server enforces and you must respect:
   - Never assert that the candidate needs no work authorization unless profile.workAuthorization says so.
 
 When the person asks you to apply for them, you can, through this server. Ask in one message for what it needs
-(CV, where and how they want to work, salary asked, work authorization, a mailbox for verification codes), build
-the profile, run discovery and propose the openings yourself; they approve each packet or batch when the server
-asks them.
+(CV, where and how they want to work, salary asked, work authorization, an email address for verification codes),
+build the profile, run discovery and propose the openings yourself; they approve each packet or batch when the
+server asks them.
+
+Submitting:
+  - You submit by yourself: submit_application and submit_batch default to mode "auto", which fills the form
+    and presses submit. Never offer the person a menu of modes. Use "assisted" (the form is filled in a visible
+    window and they press submit) only if they ask to watch or to submit themselves.
+  - A board the server cannot submit to fails with ats_browser_not_supported. Give the person the apply URL;
+    once they have applied, call record_submission so counts and pacing stay right.
 
 Before the first submission:
-  - Have the person link a mailbox for verification codes. Greenhouse emails a one-time code and Workday a
-    verification link, both bound to the submit that requested them, so they must be read while the browser
-    holds the gate open. Set AUTOAPPLY_OTP_IMAP_USER and AUTOAPPLY_OTP_IMAP_PASSWORD (an app password) to a
-    mailbox that receives only forwarded verification mail, created by a filter on the real address such as
-    from:(greenhouse OR workday.com OR myworkday.com), and pass waitForCodeSeconds to submit_application.
-    Without it a gated submission stops and the person must write the code to <artifacts>/<applicationId>.code
-    while the run waits. See docs/CONFIGURATION.md, "Verification codes".
+  - We need an email address to receive the verification codes some boards send. Offer two options: connect
+    that mailbox to the agent, so it reads the codes and does everything automatically (its own mail connector,
+    or the server's IMAP inbox via AUTOAPPLY_OTP_IMAP_USER/_PASSWORD), or the person passes the codes on by hand
+    when one arrives. With a mailbox connected, pass waitForCodeSeconds to submit_application.
   - Run node dist/cli/doctor.js --probe; it says whether that mailbox is configured.
 
 Salaries in Spain come from the tech-pay-spain MCP server at https://spanishtoptechcompanies.com/mcp.

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { LocationClassSchema } from "../domain/campaign.js";
+import { LocationClassSchema, SUBMISSION_MODES, type SubmissionMode } from "../domain/campaign.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { getWorkspace } from "../config/load.js";
 import {
@@ -314,13 +314,13 @@ export function registerBatchTools(server: McpServer): void {
         "Submits approved applications in the batch, re-running all per-application guards and honouring pacing and any configured daily limit. A null submission.dailyLimit disables only the daily ceiling. The campaign's submission.maxBatchSize still caps how many are submitted per run.",
       inputSchema: {
         batchId: z.string().min(1),
-        mode: z.enum(["manual", "assisted", "auto"]).default("manual"),
+        mode: z.enum(SUBMISSION_MODES).default("auto"),
         maxSubmissions: z.number().int().positive().max(200).optional(),
         headless: z.boolean().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    handler(async (args: { batchId: string; mode?: "manual" | "assisted" | "auto"; maxSubmissions?: number; headless?: boolean }) => {
+    handler(async (args: { batchId: string; mode?: SubmissionMode; maxSubmissions?: number; headless?: boolean }) => {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
       if (!batch) throw new AppError("batch_not_found", `no batch ${args.batchId}`);
@@ -328,7 +328,7 @@ export function registerBatchTools(server: McpServer): void {
         throw new AppError("batch_not_approved", `batch status is "${batch.status}"; approve it before submitting`);
       }
 
-      const mode = args.mode ?? "manual";
+      const mode = args.mode ?? "auto";
       const policy = workspace.campaign.submission;
       const cap = Math.min(
         args.maxSubmissions ?? policy.maxBatchSize,
@@ -340,7 +340,6 @@ export function registerBatchTools(server: McpServer): void {
       setBatchStatus(workspace.db, batch.id, "submitting");
 
       const results: Array<{ applicationId: string; company: string; outcome: string; detail: string }> = [];
-      const manualPackets: Array<{ applicationId: string; company: string; title: string; applyUrl: string }> = [];
       let submitted = 0;
 
       for (const item of ready) {
@@ -374,17 +373,6 @@ export function registerBatchTools(server: McpServer): void {
             appendEvent(workspace.db, "submission.blocked", application.id, { code: guard.code, batchId: batch.id });
             continue;
           }
-        }
-
-        if (mode === "manual") {
-          manualPackets.push({
-            applicationId: application.id,
-            company: job.companyName,
-            title: job.title,
-            applyUrl: job.applyUrl,
-          });
-          results.push({ applicationId: application.id, company: job.companyName, outcome: "packet_ready", detail: job.applyUrl });
-          continue;
         }
 
         try {
@@ -455,13 +443,10 @@ export function registerBatchTools(server: McpServer): void {
         submitted,
         remaining,
         results,
-        manualPackets: mode === "manual" ? manualPackets : undefined,
         nextStep:
-          mode === "manual"
-            ? "Open each apply URL, submit it, then call record_submission for that application id."
-            : remaining > 0
-              ? "Approved applications remain. Call submit_batch again when their submission guards allow it."
-              : "Batch complete. Track responses with record_outcome.",
+          remaining > 0
+            ? "Approved applications remain. Call submit_batch again when their submission guards allow it."
+            : "Batch complete. Track responses with record_outcome.",
       });
     }),
   );

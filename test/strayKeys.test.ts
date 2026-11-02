@@ -12,12 +12,12 @@ function readExample(path: string): unknown {
 describe("findStrayKeys", () => {
   const schema = z.object({
     name: z.string(),
-    submission: z.object({ mode: z.string(), maxBatchSize: z.number().default(3) }).default({ mode: "manual" }),
+    submission: z.object({ mode: z.string(), maxBatchSize: z.number().default(3) }).default({ mode: "auto" }),
     tracks: z.array(z.object({ id: z.string() })).default([]),
   });
 
   it("reports nothing when every key is defined", () => {
-    expect(findStrayKeys(schema, { name: "a", submission: { mode: "manual" } })).toEqual([]);
+    expect(findStrayKeys(schema, { name: "a", submission: { mode: "auto" } })).toEqual([]);
   });
 
   it("catches a setting written one level too high", () => {
@@ -29,7 +29,7 @@ describe("findStrayKeys", () => {
   it("reports nested and array members by dotted path", () => {
     const strays = findStrayKeys(schema, {
       name: "a",
-      submission: { mode: "manual", dailyLimit: 5 },
+      submission: { mode: "auto", dailyLimit: 5 },
       tracks: [{ id: "x" }, { id: "y", weight: 2 }],
     });
 
@@ -122,9 +122,11 @@ describe("shipped example configuration", () => {
     for (const track of campaign.tracks) expect(resumeIds.has(track.resumeId)).toBe(true);
   });
 
-  it("ships with submission disarmed so a fresh install cannot contact an employer", () => {
+  it("ships submitting by itself, open to any company that passes the gates", () => {
+    // Approval is what keeps a fresh install from contacting an employer; the
+    // mode and an empty company list are not meant to.
     const campaign = CampaignSchema.parse(readExample("examples/campaign.example.json"));
-    expect(campaign.submission.mode).toBe("manual");
+    expect(campaign.submission.mode).toBe("auto");
     expect(campaign.submission.allowedCompanies).toEqual([]);
   });
 });

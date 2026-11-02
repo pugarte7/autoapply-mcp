@@ -12,11 +12,12 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 |---|---|
 | Application already sent | `already_submitted` |
 | Requested mode exceeds the campaign's configured mode | `mode_not_permitted` |
+| Board has no browser submission (SmartRecruiters, Workable, Recruitee, Apple) | `ats_browser_not_supported` |
 | No recorded human approval | `not_approved` |
 | Content changed since approval | `packet_changed` |
 | A question needing a human is still unanswered | `unresolved_questions` |
 | Destination host is not allowlisted | `destination_not_allowed` |
-| Auto mode for a company that is not allowlisted | `company_not_allowlisted` |
+| Auto mode for a company missing from a non-empty `allowedCompanies` | `company_not_allowlisted` |
 | Configured daily submission cap reached | `daily_limit_reached` |
 | Minimum interval between submissions not elapsed | `pacing` |
 

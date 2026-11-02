@@ -33,7 +33,7 @@ It is built for high-volume job search **without** becoming a spam bot. Discover
 | Score | Ranks survivors across seven weighted dimensions, each with the quote that earned it |
 | Draft | Builds a match report, loads the employer's real questions, and answers only what verified profile data supports |
 | Approve | Binds a human approval to a hash of the exact submission content |
-| Submit | Manual, assisted or auto - never beyond the mode the campaign permits |
+| Submit | Fills and submits approved applications by itself, or fills them for you to submit (assisted) |
 | Track | Records submissions, outcomes and an append-only audit log |
 
 Location gates understand the US, the Bay Area, Canada, Spain and Europe, on-site and remote.
@@ -46,9 +46,9 @@ Location gates understand the US, the Bay Area, Canada, Spain and Europe, on-sit
 | Lever | Yes | Yes, from the apply page | Assisted and auto |
 | Ashby | Yes | Yes, from the hosted job page | Assisted and auto |
 | Workday | Yes | Read during the assisted run | Assisted and auto, through a candidate account on each employer's tenant |
-| SmartRecruiters | Yes | No | Manual packets only |
-| Workable | Yes | No | Manual packets only |
-| Recruitee | Yes | No | Manual packets only |
+| SmartRecruiters | Yes | No | Not yet; you apply at the URL and the agent records it |
+| Workable | Yes | No | Not yet; you apply at the URL and the agent records it |
+| Recruitee | Yes | No | Not yet; you apply at the URL and the agent records it |
 
 Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, Sequoia, YC and Built In SF. See [Additional listing sources](#additional-listing-sources).
 
@@ -150,9 +150,10 @@ a16z, Sequoia, YC or Built In SF page. These results are **unverified leads**, n
 jobs that can bypass campaign gates or submission permissions.
 
 SmartRecruiters, Workable public account feeds and Recruitee company XML feeds
-work with `add_company_board` and `discover_jobs`. These three new ATSs support
-discovery and manual packets only: assisted/automatic submission is explicitly
-blocked until a browser integration exists. Adding a discovery board never
+work with `add_company_board` and `discover_jobs`. These three ATSs support
+discovery only: submitting to them fails with `ats_browser_not_supported` until a
+browser integration exists, so you apply at the posting's URL yourself and the
+agent records it with `record_submission`. Adding a discovery board never
 changes the submission allowlist.
 
 See [docs/SOURCES.md](docs/SOURCES.md) for endpoints, examples, access requirements,
@@ -161,7 +162,7 @@ discovery. Paid accounts are never created automatically.
 
 Nothing in this repository is specific to one candidate. Keep `profile.json`, resumes and the database in `~/.autoapply` and they can never be committed by accident.
 
-A fresh install cannot contact an employer: `submission.mode` is `manual`, and `submission.allowedCompanies` is empty, which blocks every company until you add it by name.
+Nothing is sent to an employer until you approve it. Once you have, the agent submits by itself: `submission.mode` defaults to `auto`. Listing companies in `submission.allowedCompanies` limits automatic submission to them; left empty, any company that passes the campaign's gates is allowed.
 
 ### Environment variables
 
@@ -240,7 +241,7 @@ prepare_application jobId      -> match report, employer questions, drafted answ
 set_application_content        -> your cover letter and any answers only you can give
 preview_application            -> the exact packet plus its hash
 approve_application  + hash    -> asks you to approve that exact packet
-submit_application   mode      -> manual, assisted or auto
+submit_application             -> fills the form and submits it
 record_outcome                 -> track what happened
 ```
 
@@ -250,7 +251,7 @@ High volume:
 prepare_batch  {tiers:["A","B"], locationClasses:["bay-area"], minCompensation:250000}
 preview_batch                  -> the set, plus grouped blocking questions
 approve_batch  + manifestHash + expectedCount   -> asks you to approve the set
-submit_batch   mode            -> honours configured limits and pacing
+submit_batch                   -> submits the set, honouring limits and pacing
 list_batches                   -> progress
 ```
 
@@ -260,16 +261,15 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 | Mode | Behaviour | Use it when |
 |---|---|---|
-| `manual` | Server prepares the packet; you submit it yourself | Always start here |
-| `assisted` | Server fills the hosted form in a visible browser and leaves it open for you to review and submit | After the manual pilot proves the packets are right |
-| `auto` | Server fills and clicks submit | Only for allowlisted companies on forms you have already seen work |
+| `auto` (default) | Server fills the hosted form and clicks submit | Always, unless you want to watch |
+| `assisted` | Server fills the form in a visible browser and leaves it open for you to review and submit | You want to see the form or press submit yourself |
 
-`auto` additionally requires the company to appear in `submission.allowedCompanies`, every required field to be fillable, and no blocked questions to remain unanswered.
+Both modes need your approval first. `auto` also needs every required field to be fillable and no blocked question left unanswered, and, when `submission.allowedCompanies` lists companies, the company to be one of them. Boards without browser submission (SmartRecruiters, Workable, Recruitee, Apple) are refused with `ats_browser_not_supported`: apply at the URL yourself, then `record_submission` keeps the counts right. Older campaign files that say `"manual"` load as `auto`, and `doctor` warns.
 
 ## What it deliberately does not do
 
 - No LinkedIn Easy Apply, Indeed or Wellfound automation. Their terms prohibit it and their anti-bot systems are built to stop it. Use their alerts as leads, then apply through the employer's own board.
-- No assumption that discovery support grants browser submission support. New ATS integrations remain manual-only, and Workday's account-based flow can still require human intervention.
+- No assumption that discovery support grants browser submission support. New ATS integrations stay discovery-only until their browser flow exists, and Workday's account-based flow can still require human intervention.
 - No CAPTCHA solving, proxy rotation or fingerprint evasion.
 - No writing of your resume prose or cover letters. The server supplies structured evidence; your agent writes the words and you approve them.
 

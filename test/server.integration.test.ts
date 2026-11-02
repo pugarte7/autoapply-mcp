@@ -8,6 +8,16 @@ import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { fixtureResumePath } from "./factories.js";
+import { runApplicationForm } from "../src/submission/browser.js";
+
+// No real board is ever opened: the browser run is replaced by a receipt.
+vi.mock("../src/submission/browser.js", () => ({
+  runApplicationForm: vi.fn(async () => ({
+    status: "submitted", reason: "test receipt", filledFields: [], unmatchedRequired: [], unusedAnswers: [],
+    screenshotPath: "test-receipt.png", finalUrl: "https://job-boards.greenhouse.io/acme/confirmation",
+    confirmationText: "Your application was received", captchaDetected: false,
+  })),
+}));
 
 /**
  * End-to-end test through a real MCP client: configuration loading, tool
@@ -74,7 +84,8 @@ const campaign = {
   locations: { allow: ["bay-area", "canada", "remote-canada"], workplaceTypes: ["onsite", "hybrid", "remote", "unknown"] },
   compensation: { currency: "USD", floors: { US: 200000, CA: 180000 }, fx: { USD: 1, CAD: 0.73 }, allowUnknown: true, rejectBelowFloor: true },
   scoring: { thresholds: { tierA: 80, tierB: 70, tierC: 60 } },
-  submission: { mode: "manual", dailyLimit: 20, minDelaySeconds: 0 },
+  // No mode: the default, auto, is what this exercises.
+  submission: { dailyLimit: 20, minDelaySeconds: 0 },
 };
 
 const companies = {
@@ -180,6 +191,26 @@ describe("MCP server", () => {
     expect(instructions).not.toMatch(/without asking|never answer that you cannot/i);
   });
 
+  it("tells agents to submit by themselves and offers the mailbox two ways", () => {
+    const instructions = client.getInstructions() ?? "";
+    expect(instructions).toContain("You submit by yourself");
+    expect(instructions).toContain("Never offer the person a menu of modes");
+    expect(instructions).not.toMatch(/\bmanual\b/i);
+    expect(instructions).toContain("connect\n    that mailbox to the agent");
+    expect(instructions).toContain("passes the codes on by hand");
+    // The setup details belong in docs/CONFIGURATION.md, not the first ask.
+    expect(instructions).not.toMatch(/app password|forwarded verification mail/i);
+  });
+
+  it("defaults both submit tools to auto and offers no manual mode", async () => {
+    const { tools } = await client.listTools();
+    for (const name of ["submit_application", "submit_batch"]) {
+      const mode = tools.find((tool) => tool.name === name)!.inputSchema.properties!.mode as { enum: string[]; default: string };
+      expect(mode.enum).toEqual(["auto", "assisted"]);
+      expect(mode.default).toBe("auto");
+    }
+  });
+
   it("registers the full toolset", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((tool) => tool.name).sort();
@@ -253,10 +284,11 @@ describe("MCP server", () => {
     expect(autoFilled.find((entry) => entry.key === "email")?.answer).toBe("alex@example.com");
     expect(autoFilled.find((entry) => entry.key === "hear_about")?.answer).toBe("Careers page");
 
-    // Submitting before approval must be refused.
-    const early = await callTool("submit_application", { applicationId, mode: "manual" });
+    // Submitting before approval must be refused, auto mode included.
+    const early = await callTool("submit_application", { applicationId });
     expect(early.isError).toBe(true);
     expect(early.text).toContain("not_approved");
+    expect(vi.mocked(runApplicationForm)).not.toHaveBeenCalled();
 
     const updated = parse(
       (
@@ -287,18 +319,23 @@ describe("MCP server", () => {
     // The person was shown the packet itself, not just asked for a yes.
     expect(personShown.at(-1)).toContain(`Packet ${packetHash}`);
 
-    // Auto mode is above the campaign's configured ceiling.
-    const auto = await callTool("submit_application", { applicationId, mode: "auto" });
-    expect(auto.isError).toBe(true);
-    expect(auto.text).toContain("mode_not_permitted");
+    // A legacy "manual" request is not a mode any more.
+    const legacy = await callTool("submit_application", { applicationId, mode: "manual" });
+    expect(legacy.isError).toBe(true);
 
-    const manual = await callTool("submit_application", { applicationId, mode: "manual" });
-    expect(manual.isError).toBe(false);
-    expect(manual.text).toContain("Apply URL: https://job-boards.greenhouse.io/acme/jobs/4001");
-    expect(manual.text).toContain("Short, specific letter.");
+    // With no mode the server fills the form and presses submit itself.
+    const sent = parse((await callTool("submit_application", { applicationId })).text);
+    expect(sent.mode).toBe("auto");
+    expect(sent.result.status).toBe("submitted");
+    const [packet, options] = vi.mocked(runApplicationForm).mock.calls.at(-1)!;
+    expect(packet.applyUrl).toBe("https://job-boards.greenhouse.io/acme/jobs/4001");
+    expect(packet.coverLetter).toBe("Short, specific letter.");
+    expect(options.submit).toBe(true);
 
-    const recorded = parse((await callTool("record_submission", { applicationId, confirmationRef: "ack-1" })).text);
-    expect(recorded.status).toBe("submitted");
+    // Already counted, so a hand-recorded duplicate is refused.
+    const duplicate = await callTool("record_submission", { applicationId, confirmationRef: "ack-1" });
+    expect(duplicate.isError).toBe(true);
+    expect(duplicate.text).toContain("already_submitted");
 
     // The applied role must disappear from the queue.
     expect((parse((await callTool("list_queue")).text).jobs as unknown[])).toHaveLength(0);
@@ -332,7 +369,7 @@ describe("MCP server", () => {
   it("reports configuration through reload_config", async () => {
     const config = parse((await callTool("reload_config")).text);
     expect(config.campaign).toBe("integration-campaign");
-    expect(config.submissionMode).toBe("manual");
+    expect(config.submissionMode).toBe("auto");
     expect(config.tracks).toEqual(["ai-security"]);
   });
 });

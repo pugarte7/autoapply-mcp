@@ -251,9 +251,10 @@ additional reviewed batches rather than making a single unbounded batch.
 
 | Mode | Result |
 |---|---|
-| `manual` | Returns apply URLs and packets for you to submit, then call `record_submission` |
+| `auto` (default) | Fills and submits. Requires campaign mode `auto` and, when `allowedCompanies` lists companies, one of them |
 | `assisted` | Fills each hosted form in a visible browser for you to review and submit |
-| `auto` | Fills and submits. Requires campaign mode `auto` and an allowlisted company |
+
+A board without browser submission is marked `blocked` with `ats_browser_not_supported`; the person applies at its URL and the agent calls `record_submission`.
 
 A CAPTCHA, an unfillable required field, or an off-allowlist redirect marks that application `needs_human` and the batch continues.
 

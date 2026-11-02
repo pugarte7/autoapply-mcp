@@ -192,7 +192,7 @@ Thresholds set the tiers. Calibrate them against your own pool: run `discover_jo
 
 ```json
 {
-  "mode": "manual",
+  "mode": "auto",
   "allowedAtsDomains": ["job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com"],
   "allowedCompanies": [],
   "dailyLimit": 15,
@@ -202,7 +202,9 @@ Thresholds set the tiers. Calibrate them against your own pool: run `discover_jo
 }
 ```
 
-`mode` is a ceiling: a tool call may request a weaker mode but never a stronger one. `blockedQuestionCategories` defaults to the full sensitive set; removing an entry is a deliberate, consequential choice.
+`mode` is `auto` (the default: the agent fills and submits each approved application) or `assisted` (the form is filled in a visible window and the person presses submit). It is a ceiling: under `auto` a call may still ask for `assisted`, never the other way round. A `manual` mode used to exist; a file that still says `"manual"` loads as `auto` and `doctor` warns about it. Approval is required in both modes.
+
+`allowedCompanies` narrows automatic submission: when it lists companies, auto mode submits only to those; empty, any company that passes the campaign's gates may be submitted to. `blockedQuestionCategories` defaults to the full sensitive set; removing an entry is a deliberate, consequential choice.
 
 `dailyLimit` accepts a positive integer or `null`. Set `"dailyLimit": null` to
 disable the daily submission ceiling; omitting it retains the default of 25.

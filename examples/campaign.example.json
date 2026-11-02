@@ -55,7 +55,7 @@
   },
   "freshnessDays": 45,
   "submission": {
-    "mode": "manual",
+    "mode": "auto",
     "allowedAtsDomains": ["boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com"],
     "allowedCompanies": [],
     "dailyLimit": 20,
