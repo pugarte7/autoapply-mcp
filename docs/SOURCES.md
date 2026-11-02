@@ -86,11 +86,10 @@ Confidential/unlisted jobs are excluded. Access-denied responses do not trigger
 this fallback. Slug guessing still probes the API only, so use an employer's
 official hosted-board URL with `add_company_board` when that API is unavailable.
 
-SmartRecruiters, Workable and Recruitee **do not have browser submission
-integrations**. Submitting to them fails with `ats_browser_not_supported`, even
-if a domain has been explicitly allowlisted. The person applies at the posting's
-URL themselves and the agent calls `record_submission`, so counts and pacing
-stay accurate.
+SmartRecruiters, Workable and Recruitee publish no question schema, so their
+packets are drafted against a baseline field set and the agent adds the rest from
+the live form. Submission works as on any other board: the agent sends the
+approved packet with its own browser and calls `record_submission`.
 
 ## Aggregate leads
 

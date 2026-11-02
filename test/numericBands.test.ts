@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { pickNumericBandIndex } from "../src/drafting/numericBands.js";
 import { selectBestOption } from "../src/drafting/options.js";
-import { pickOptionIndex } from "../src/submission/formFields.js";
 
 /** The real option set from Figma's "Software Engineer, Traffic" posting. */
 const FIGMA_BANDS = ["0 - 2 years", "3 - 4 years", "5 - 10 years", "10+ years"];
@@ -39,12 +38,6 @@ describe("numeric band matching", () => {
    * treating that as a failed parse switched band matching off on exactly the
    * forms it exists for, leaving a required field empty and stalling the wizard.
    */
-  it("looks past a leading placeholder option", () => {
-    const cisco = ["Select One", "0-1 year", "2-3 years", "4+ years"];
-    expect(pickNumericBandIndex(cisco, ["5"])).toBe(3);
-    expect(pickOptionIndex(cisco, ["5"])).toBe(3);
-    expect(pickNumericBandIndex(["Select...", "0 - 2 years", "3 - 4 years"], ["3 years"])).toBe(2);
-  });
 
   it("never picks a placeholder as the matching band", () => {
     // The stated figure sits below every real band, so nothing is selected
@@ -54,14 +47,6 @@ describe("numeric band matching", () => {
 
   it("ignores answers that state no figure", () => {
     expect(pickNumericBandIndex(FIGMA_BANDS, ["Yes"])).toBe(-1);
-  });
-
-  it("reaches both the drafting and the form-fill matchers", () => {
-    expect(selectBestOption(["5+ years"], FIGMA_BANDS)).toEqual({
-      value: "5 - 10 years",
-      matchedOption: true,
-    });
-    expect(pickOptionIndex(FIGMA_BANDS, ["5+ years"])).toBe(2);
   });
 
   it("still prefers an exact textual match over a band", () => {

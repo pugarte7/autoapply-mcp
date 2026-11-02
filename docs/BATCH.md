@@ -8,11 +8,11 @@ Preparing a hundred applications one at a time does not work in practice. The ba
 prepare_batch   select from the queue, prepare a packet for each
 preview_batch   review the set and the grouped blocking questions
 approve_batch   one decision authorizing the whole manifest
-submit_batch    submit the set, honouring daily limit and pacing
+submit_batch    hand the agent the next application; it sends it and records it
 list_batches    track progress
 ```
 
-To run without anyone at the keyboard, the person approves standing rules once with `approve_rules`; `submit_batch` then sends the applications those rules cover, and [DAILY.md](DAILY.md) schedules the whole flow every morning.
+To apply without asking each time, the person approves standing rules once with `approve_rules`; `submit_batch` then hands over the applications those rules cover. A client that schedules prompts can run `daily_apply` every morning.
 
 ## prepare_batch
 
@@ -44,7 +44,7 @@ Single approval binds to one packet hash. Batch approval binds to a hash of ever
 
 ## Where your data lives
 
-Keep personal data outside the repository. The server's default home is `~/.autoapply`, which is where profile, campaign, resumes, database and artifacts belong:
+Keep personal data outside the repository. The server's default home is `~/.autoapply`, which is where profile, campaign, resumes and database belong:
 
 ```
 ~/.autoapply/
@@ -53,7 +53,6 @@ Keep personal data outside the repository. The server's default home is `~/.auto
   companies.json      ATS board list
   resumes/            the files actually uploaded
   data/               SQLite database
-  artifacts/          screenshots and submission evidence
 ```
 
 Nothing in the repository is specific to one candidate, so a checkout can be published without stripping anything. `config/` is gitignored as a convenience for local experiments, but the safer habit is to keep real data in `~/.autoapply` and point `AUTOAPPLY_HOME` there.
@@ -243,22 +242,20 @@ Optional free-text fields such as "Additional Information" are often better empt
 
 ## Submission
 
-`submit_batch` re-runs every guard per application and respects a configured
-`dailyLimit` and `minDelaySeconds`. With a positive daily limit, reaching the cap
-marks the remainder `deferred`; continue when the daily allowance resets.
-Set `submission.dailyLimit` to `null` for unlimited daily submissions. That
-disables only the daily ceiling: `maxBatchSize`, `maxSubmissions`, per-company
-limits, pacing and all approval/destination checks still apply. Continue through
-additional reviewed batches rather than making a single unbounded batch.
+`submit_batch` hands the agent one application at a time: the first one every
+guard allows now. The agent sends it with its own browser, calls
+`record_submission`, and calls `submit_batch` again. The guards respect a
+configured `dailyLimit` and `minDelaySeconds`: under pacing the result says how
+many seconds to wait, and at the daily cap the rest wait for tomorrow. Set
+`submission.dailyLimit` to `null` for unlimited daily submissions. That disables
+only the daily ceiling: per-company limits, pacing and all approval and
+destination checks still apply.
 
-| Mode | Result |
-|---|---|
-| `auto` (default) | Fills and submits. Requires campaign mode `auto` and, when `allowedCompanies` lists companies, one of them |
-| `assisted` | Fills each hosted form in a visible browser for you to review and submit |
-
-A board without browser submission is marked `blocked` with `ats_browser_not_supported`; the person applies at its URL and the agent calls `record_submission`.
-
-An unfillable required field, an off-allowlist redirect, or a CAPTCHA the person did not solve within `captchaWaitSeconds` marks that application `needs_human` and the batch continues. Each such result carries `fieldsToAnswer` and a `nextStep`: the agent answers the `who: "agent"` fields from your profile and resubmits that application. With a verification mailbox configured, each run waits up to 300 seconds at a code gate (`waitForCodeSeconds` changes it), reading the code from the mailbox or from that application's own `<artifacts>/<applicationId>.code`; without one, gated applications are parked for `provide_verification_code`.
+An application the agent cannot finish now (a CAPTCHA the person has not solved
+yet, a question only they can answer) goes in `skip` on the next call, and the
+batch moves on. A question the live form asks that the packet lacks is added
+with `set_application_content` by its label; that changes the packet, so it needs
+approval again unless standing rules cover it.
 
 ## Realistic volume
 

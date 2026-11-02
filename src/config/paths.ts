@@ -14,7 +14,6 @@ export type WorkspacePaths = {
   campaign: string;
   companies: string;
   database: string;
-  artifacts: string;
 };
 
 function fromEnv(name: string, fallback: string, home: string): string {
@@ -34,6 +33,5 @@ export function resolvePaths(): WorkspacePaths {
     campaign: fromEnv("AUTOAPPLY_CAMPAIGN", "campaign.json", home),
     companies: fromEnv("AUTOAPPLY_COMPANIES", "companies.json", home),
     database: fromEnv("AUTOAPPLY_DB", join("data", "autoapply.sqlite"), home),
-    artifacts: fromEnv("AUTOAPPLY_ARTIFACTS", "artifacts", home),
   };
 }

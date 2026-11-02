@@ -16,7 +16,7 @@ The server uploads a real file to the employer's form. That file is validated be
 | Under 25 MB | `resume_unusable` |
 | Under 5 MB | warning only - many ATS reject larger uploads |
 
-A failure sets the application to `needs_human` and reports `resumeBlocker`. Submission is refused with `resume_unusable`, and an upload failure during an assisted or auto run aborts rather than continuing.
+A failure sets the application to `needs_human` and reports `resumeBlocker`. The packet is not handed over: submission is refused with `resume_unusable`.
 
 PDF is the right choice. It is what ATS parsers handle most reliably, and it preserves LaTeX typesetting exactly.
 

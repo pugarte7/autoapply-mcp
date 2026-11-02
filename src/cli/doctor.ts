@@ -2,14 +2,12 @@
 import { readFileSync, existsSync } from "node:fs";
 import { loadCampaign, loadCompanies, loadProfile } from "../config/load.js";
 import { resolvePaths } from "../config/paths.js";
-import { findLegacyCampaignSettings } from "../config/legacySettings.js";
 import { findStrayKeys, locateInSchema } from "../config/strayKeys.js";
 import { CampaignSchema } from "../domain/campaign.js";
 import { ProfileSchema } from "../domain/profile.js";
 import { adapterFor } from "../sources/registry.js";
 import { probeJson } from "../sources/http.js";
 import { validateResumeFile } from "../submission/resume.js";
-import { readVerificationInboxConfig } from "../submission/verificationInbox.js";
 import { toErrorMessage } from "../util/errors.js";
 
 /**
@@ -71,7 +69,7 @@ async function main(): Promise<void> {
     checks.push({
       name: "campaign.json",
       ok: true,
-      detail: `${campaign.name}, ${campaign.tracks.length} track(s), submission mode "${campaign.submission.mode}"`,
+      detail: `${campaign.name}, ${campaign.tracks.length} track(s)`,
     });
   } catch (error) {
     checks.push({ name: "campaign.json", ok: false, detail: toErrorMessage(error) });
@@ -109,21 +107,11 @@ async function main(): Promise<void> {
   const strays = [
     ...reportStrayKeys("profile.json", paths.profile, ProfileSchema),
     ...reportStrayKeys("campaign.json", paths.campaign, CampaignSchema),
-    ...findLegacyCampaignSettings(readRawJson(paths.campaign)),
   ];
   if (strays.length > 0) {
     console.log("");
     for (const stray of strays) console.log(`WARN  ${stray}`);
   }
-
-  // Not a failing check: the file hand-off still works without a mailbox, but a
-  // gated submission then waits on a person, so say so before the first run.
-  const inbox = readVerificationInboxConfig();
-  console.log(
-    inbox
-      ? `\nPASS  verification inbox - ${inbox.user} on ${inbox.host}:${inbox.port}, folders ${inbox.mailboxes.join(", ")}`
-      : "\nWARN  verification inbox - not configured; set AUTOAPPLY_OTP_IMAP_USER and AUTOAPPLY_OTP_IMAP_PASSWORD so Greenhouse codes and Workday links are read for you (docs/CONFIGURATION.md, \"Verification codes\")",
-  );
 
   if (companies && companies.length > 0 && process.argv.includes("--probe")) {
     console.log("\nProbing configured boards...\n");

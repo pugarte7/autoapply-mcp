@@ -1,6 +1,6 @@
 import type { Application, DraftAnswer } from "../domain/job.js";
-import { isDiscoveredQuestionKey } from "../submission/discoveredQuestions.js";
-import { isAiDetectionPrompt, isReservedForHuman } from "../submission/formFields.js";
+import { isDiscoveredQuestionKey } from "./discovered.js";
+import { isAiDetectionPrompt, isReservedForHuman } from "./labels.js";
 
 /**
  * Boards that publish no question schema - every Workday tenant - reveal their
@@ -62,8 +62,6 @@ export function carryEmployerAnswers(drafted: readonly DraftAnswer[], earlier: r
       labels.add(label);
       carried.push({
         ...answer,
-        // The control index belonged to the earlier form's layout.
-        fieldIndex: undefined,
         citation: `carried from ${application.id}, where it was answered by hand on this board`,
         guidance: `Answered by hand for ${application.id} on this board. Replace it with set_application_content if this posting needs a different answer.`,
       });

@@ -338,7 +338,6 @@ describe("the Spain campaign example", () => {
     expect(campaign.compensation.currency).toBe("EUR");
     expect(campaign.compensation.floors.ES).toBe(60000);
     const usCanada = CampaignSchema.parse(readJson("examples/campaign.example.json"));
-    expect(campaign.submission.mode).toBe(usCanada.submission.mode);
     expect(campaign.submission.maxBatchSize).toBe(usCanada.submission.maxBatchSize);
     expect(campaign.submission.allowedCompanies).toEqual([]);
     // Lever's EU boards apply on their own host, which jobs.lever.co does not cover.
@@ -403,7 +402,6 @@ describe("init --preset", () => {
       campaign: join(dir, "campaign.json"),
       companies: join(dir, "companies.json"),
       database: join(dir, "data", "autoapply.sqlite"),
-      artifacts: join(dir, "artifacts"),
     };
   }
 

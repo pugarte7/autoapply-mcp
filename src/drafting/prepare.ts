@@ -49,7 +49,7 @@ export type PreparedApplication = {
   autoFilled: Array<{ key: string; label: string; answer: string; citation: string }>;
 };
 
-/** Boards that publish each posting's form before the browser opens. */
+/** Boards that publish each posting's form ahead of time. */
 const QUESTION_LOADERS: Partial<Record<Job["ats"], (job: Job) => Promise<FormQuestion[]>>> = {
   greenhouse: async (job) => {
     const detail = await fetchGreenhouseJobDetail(job.board, job.externalId);

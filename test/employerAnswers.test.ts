@@ -1,7 +1,7 @@
+import { discoveredQuestionKey } from "../src/drafting/discovered.js";
 import { describe, expect, it } from "vitest";
 import { carryEmployerAnswers } from "../src/drafting/employerAnswers.js";
 import type { Application, DraftAnswer } from "../src/domain/job.js";
-import { discoveredQuestionKey } from "../src/submission/discoveredQuestions.js";
 
 function revealed(label: string, answer: string, overrides: Partial<DraftAnswer> = {}): DraftAnswer {
   return {
@@ -69,12 +69,6 @@ describe("carrying revealed-question answers to the next posting on a board", ()
     ]);
     expect(carried.every((answer) => answer.citation.includes("app_etsy1"))).toBe(true);
     expect(answers.slice(0, drafted.length)).toEqual(drafted);
-  });
-
-  it("drops the control the answer was bound to on the earlier form", () => {
-    const earlier = application("app_1", [revealed(AUTHORIZED, "Yes", { fieldIndex: 7 })]);
-    const [carried] = carryEmployerAnswers([], [earlier]);
-    expect(carried?.fieldIndex).toBeUndefined();
   });
 
   it("takes the most recent answer when two applications disagree", () => {

@@ -1,4 +1,4 @@
-import type { AtsKind, Campaign, SubmissionMode } from "../domain/campaign.js";
+import type { Campaign } from "../domain/campaign.js";
 import type { Application, Job } from "../domain/job.js";
 import type { ApprovalRecord } from "../db/repositories/applications.js";
 import { checkUrlAllowed } from "./allowlist.js";
@@ -13,16 +13,6 @@ import { authoriseByRules, type StandingCheck } from "./standingRules.js";
  * sending a wrong or unapproved application is not.
  */
 
-/**
- * Boards with discovery but no browser submission. They used to fall back to a
- * packet for the person to send by hand; with that mode gone they are refused
- * outright, before approval is even consulted, so the agent learns at once
- * that the only route is the person applying and recording it. Apple's career
- * site is listed because its walk was never written: without this the run
- * would open a signed-in browser only to stop on the first page.
- */
-const BROWSERLESS_ATS: ReadonlySet<AtsKind> = new Set(["smartrecruiters", "workable", "recruitee", "apple"]);
-
 export type GuardInput = {
   application: Application;
   job: Job;
@@ -36,7 +26,6 @@ export type GuardInput = {
    */
   companyApplicationCount?: number;
   lastSubmissionAt: string | null;
-  requestedMode: SubmissionMode;
   /**
    * Standing rules the person approved, consulted only for an application
    * with no approval of its own. A packet the person approved or rejected
@@ -62,28 +51,12 @@ function deny(code: string, reason: string, waitSeconds?: number): GuardResult {
 }
 
 export function checkSubmissionAllowed(input: GuardInput): GuardResult {
-  const { application, job, campaign, approval, requestedMode } = input;
+  const { application, job, campaign, approval } = input;
   const policy = campaign.submission;
   const now = input.now ?? new Date();
 
   if (application.status === "submitted") {
     return deny("already_submitted", `application was already submitted at ${application.submittedAt}`);
-  }
-
-  // Assisted is the lesser mode: a call may ask for it under an auto campaign
-  // (the person wants to watch, or press submit), never the other way round.
-  const modeRank = { assisted: 0, auto: 1 } as const;
-  if (modeRank[requestedMode] > modeRank[policy.mode]) {
-    return deny(
-      "mode_not_permitted",
-      `campaign submission mode is "${policy.mode}"; "${requestedMode}" submission is not permitted`,
-    );
-  }
-  if (BROWSERLESS_ATS.has(job.ats)) {
-    return deny(
-      "ats_browser_not_supported",
-      `${job.ats} postings cannot be submitted by the server; the person can apply at ${job.applyUrl} themselves, then call record_submission so counts and pacing stay right`,
-    );
   }
 
   let rulesId: string | undefined;
@@ -141,13 +114,13 @@ export function checkSubmissionAllowed(input: GuardInput): GuardResult {
   }
 
   // An empty list is no restriction: any company that passed the campaign's
-  // gates may be submitted to. Naming companies narrows auto mode to them.
-  if (policy.allowedCompanies.length > 0 && requestedMode === "auto") {
+  // gates may be submitted to. Naming companies narrows submission to them.
+  if (policy.allowedCompanies.length > 0) {
     const permitted = policy.allowedCompanies.some(
       (name) => name.toLowerCase() === job.companyName.toLowerCase(),
     );
     if (!permitted) {
-      return deny("company_not_allowlisted", `auto submission is limited to allowlisted companies`);
+      return deny("company_not_allowlisted", "submission is limited to the companies in submission.allowedCompanies");
     }
   }
 

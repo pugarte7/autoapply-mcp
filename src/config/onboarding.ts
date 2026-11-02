@@ -20,6 +20,8 @@ export type OnboardingReport = { complete: boolean; groups: OnboardingGroup[]; a
 
 /** How many blank answer-bank questions are listed by name before the rest are counted. */
 const BANK_LISTED = 20;
+/** The answer-bank entry for the notices a form requires: asked on its own, never left in the list. */
+const CONSENT_KEY = "acknowledgement";
 
 function at(root: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((value, key) => (isPlainObject(value) ? value[key] : undefined), root);
@@ -77,7 +79,6 @@ function companiesFix(
 }
 
 export type OnboardingInputs = {
-  env?: NodeJS.ProcessEnv;
   /** The raw companies file, null when it is missing. Left out, the company list is not checked. */
   companies?: Record<string, unknown> | null;
 };
@@ -85,7 +86,7 @@ export type OnboardingInputs = {
 export function onboardingQuestions(
   profile: Record<string, unknown> | null,
   campaign: Record<string, unknown> | null,
-  { env = process.env, companies }: OnboardingInputs = {},
+  { companies }: OnboardingInputs = {},
 ): OnboardingReport {
   const p = profile ?? {};
   const c = campaign ?? {};
@@ -161,7 +162,13 @@ export function onboardingQuestions(
   ]);
 
   const demographics = ["gender", "raceEthnicity", "veteranStatus", "disabilityStatus"];
+  const consent = entries(p.answers).find((entry) => entry.key === CONSENT_KEY);
   group("Questions most forms ask", [
+    consent !== undefined && blank(consent.answer) && {
+      field: `answers.${CONSENT_KEY}`,
+      question:
+        "Almost every form requires accepting the employer's privacy notice and the processing of your data for that application. May I accept those for you on every application (yes), or ask you each time (no)? Optional consents, such as a talent pool or marketing, are always declined. Record the answer with remember_answer, key acknowledgement.",
+    },
     storedBlank(p, "personal.legalAgeConfirmation") && { field: "personal.legalAgeConfirmation", question: "Are you 18 or older?" },
     demographics.every((field) => storedBlank(p, `personal.demographics.${field}`)) && {
       field: "personal.demographics",
@@ -170,7 +177,9 @@ export function onboardingQuestions(
     },
   ]);
 
-  const unanswered = entries(p.answers).filter((entry) => blank(entry.answer) && entry.skip !== true);
+  const unanswered = entries(p.answers).filter(
+    (entry) => blank(entry.answer) && entry.skip !== true && entry.key !== CONSENT_KEY,
+  );
   if (unanswered.length > 0) {
     const byCategory = new Map<string, string[]>();
     for (const entry of unanswered) {
@@ -189,13 +198,6 @@ export function onboardingQuestions(
       },
     ]);
   }
-
-  group("Verification codes", [
-    blank(env.AUTOAPPLY_OTP_IMAP_USER) && {
-      field: "AUTOAPPLY_OTP_IMAP_USER",
-      question: "A mailbox the server may read for the verification codes Greenhouse and Workday email (an app password, set in the environment; see docs/CONFIGURATION.md, \"Verification codes\").",
-    },
-  ]);
 
   const companyGap = companies === undefined ? null : companiesFix(profile, campaign, companies);
   const agentFixes = companyGap ? [companyGap] : [];

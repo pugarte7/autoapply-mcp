@@ -44,28 +44,24 @@ describe("server instructions", () => {
     await server.close();
   });
 
-  it("tells the agent to act, and to ask the person in one grouped message", () => {
-    expect(instructions).toContain("Act, don't ask");
+  it("tells the agent to do the work, and to ask the person in one grouped message", () => {
+    expect(instructions).toContain("You do the work");
     expect(instructions).toContain("One onboarding message at the start");
     expect(instructions).toContain("into one message, never one at a time");
   });
 
-  it("names the setup, memory, code, rules tools and the prompts", () => {
-    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "load_preset", "remember_answer", "provide_verification_code", "list_pending_gates", "approve_rules", "onboard", "daily_apply"]) {
+  it("names the setup, memory, submission and rules tools and the prompts", () => {
+    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "load_preset", "remember_answer", "submit_application", "record_submission", "approve_rules", "onboard", "daily_apply"]) {
       expect(instructions).toContain(name);
     }
   });
 
-  it("hands a CAPTCHA to the person instead of stopping the application", () => {
-    expect(instructions).not.toMatch(/CAPTCHA or an unexpected form appears, stop/);
-    expect(instructions.replace(/\s+/g, " ")).toContain("waits for them to solve it");
-  });
-
-  it("offers the two ways to get verification codes and no mode menu", () => {
-    expect(instructions).toContain("connect that mailbox to the agent");
-    expect(instructions).toContain("passes the codes on by hand");
-    expect(instructions).not.toMatch(/app password/i);
-    expect(instructions).not.toMatch(/manual mode|mode: ?"?manual/i);
+  it("has the agent send applications with its own browser and hand CAPTCHAs to the person", () => {
+    const flat = instructions.replace(/\s+/g, " ");
+    expect(flat).toContain("you send each approved application with your own browser");
+    expect(flat).toContain("A CAPTCHA, or a form question asking whether you are a bot or an AI");
+    expect(flat).toContain("never solve or answer it");
+    expect(instructions).not.toMatch(/assisted|IMAP|app password|provide_verification_code|manual mode/i);
   });
 
   it("keeps the untrusted-content, truthfulness and star rules", () => {

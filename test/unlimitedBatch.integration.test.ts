@@ -10,21 +10,12 @@ import { getWorkspace, resetWorkspaceCache } from "../src/config/load.js";
 import { saveApplication, countSubmittedSince } from "../src/db/repositories/applications.js";
 import { saveEvaluation, upsertJobs } from "../src/db/repositories/jobs.js";
 import { startOfDayIso } from "../src/submission/guards.js";
-import { runApplicationForm } from "../src/submission/browser.js";
 import { fixtureResumePath, makeCampaign, makeJob, makeProfile } from "./factories.js";
-
-vi.mock("../src/submission/browser.js", () => ({
-  runApplicationForm: vi.fn(async () => ({
-    status: "submitted", reason: "test receipt", filledFields: [], unmatchedRequired: [], unusedAnswers: [],
-    screenshotPath: "test-receipt.png", finalUrl: "https://job-boards.greenhouse.io/testcorp/confirmation",
-    confirmationText: "Your application was received", captchaDetected: false,
-  })),
-}));
 
 let home: string;
 let client: Client;
 const campaign = makeCampaign({
-  submission: { mode: "auto", dailyLimit: 20, maxBatchSize: 3, maxPerCompany: 3,
+  submission: { dailyLimit: 20, maxBatchSize: 3, maxPerCompany: 3,
     minDelaySeconds: 0, allowedCompanies: ["Test Corp"] },
 });
 
@@ -105,13 +96,13 @@ it("submits after 100 daily submissions without bypassing per-run or per-company
   expect(prepared.selected).toBe(3);
   const preview = await call("preview_batch", { batchId: prepared.batchId });
   await call("approve_batch", { batchId: prepared.batchId, manifestHash: preview.manifestHash, expectedCount: 3 });
-  const first = await call("submit_batch", { batchId: prepared.batchId, mode: "auto", maxSubmissions: 1 });
-  expect(first.submitted).toBe(1);
-  expect(first.remaining).toBe(2);
-  const rest = await call("submit_batch", { batchId: prepared.batchId, mode: "auto", maxSubmissions: 100 });
-  expect(rest.submitted).toBe(2);
-  expect(rest.remaining).toBe(0);
-  expect(vi.mocked(runApplicationForm)).toHaveBeenCalledTimes(3);
+  // One at a time: the agent sends each with its browser and records it.
+  for (const left of [3, 2, 1]) {
+    const handed = await call("submit_batch", { batchId: prepared.batchId });
+    expect(handed.remaining).toBe(left);
+    await call("record_submission", { applicationId: handed.next.applicationId, confirmationRef: "received" });
+  }
+  expect((await call("submit_batch", { batchId: prepared.batchId })).remaining).toBe(0);
   expect(countSubmittedSince(db, startOfDayIso())).toBe(104);
   const overCompanyCap = await client.callTool({ name: "prepare_batch", arguments: { tiers: ["A"], limit: 100 } });
   expect(overCompanyCap.isError).toBe(true);
@@ -123,7 +114,6 @@ it("keeps unanswered required questions outside approval even when the daily cei
   }));
   await call("reload_config");
   const { db } = getWorkspace();
-  const callsBefore = vi.mocked(runApplicationForm).mock.calls.length;
   vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
     questions: [
       { label: "Explain your incident-response experience.", required: true, fields: [{ name: "experience", type: "input_text" }] },
@@ -152,5 +142,4 @@ it("keeps unanswered required questions outside approval even when the daily cei
     batchId: prepared.batchId, manifestHash: preview.manifestHash, expectedCount: 1,
   } });
   expect(approval.isError).toBe(true);
-  expect(vi.mocked(runApplicationForm).mock.calls.length).toBe(callsBefore);
 });

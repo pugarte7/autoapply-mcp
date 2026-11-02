@@ -59,6 +59,7 @@ describe("answerOwner", () => {
     ["Are you a protected veteran?", "veteran"],
     ["Do you have a disability?", "disability"],
     ["I certify that I have never been convicted of a crime", "legal-attestation"],
+    ["I acknowledge the privacy notice", "legal-attestation"],
   ])("leaves %s to the person", (label, category) => {
     expect(answerOwner(label, category)).toBe("person");
   });
@@ -68,7 +69,6 @@ describe("answerOwner", () => {
     ["How many years of Go experience do you have?", "general"],
     ["How did you hear about us?", "source"],
     ["When can you start?", "start-date"],
-    ["I acknowledge the privacy notice", "legal-attestation"],
   ])("lets the agent answer %s", (label, category) => {
     expect(answerOwner(label, category)).toBe("agent");
   });

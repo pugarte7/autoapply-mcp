@@ -73,11 +73,11 @@ const campaign = {
   locations: { allow: ["bay-area", "canada", "remote-canada"], workplaceTypes: ["onsite", "hybrid", "remote", "unknown"] },
   compensation: { currency: "USD", floors: { US: 200000, CA: 180000 }, fx: { USD: 1, CAD: 0.73 }, allowUnknown: true, rejectBelowFloor: true },
   scoring: { thresholds: { tierA: 80, tierB: 70, tierC: 60 } },
-  // Submission is fenced twice before a browser could start: no approval can be
+  // Submission is fenced twice before a packet could be handed over: no approval can be
   // recorded without the person (the eval client has no approval dialog), and
   // no apply URL is on this destination allowlist, so even an approved packet
   // would stop at destination_not_allowed.
-  submission: { mode: "auto", allowedAtsDomains: ["submission-fenced.invalid"], dailyLimit: 20, minDelaySeconds: 0 },
+  submission: { allowedAtsDomains: ["submission-fenced.invalid"], dailyLimit: 20, minDelaySeconds: 0 },
 };
 
 const companies = { version: 1, companies: [{ name: "Acme", ats: "greenhouse", board: "acme", tier: "A" }] };

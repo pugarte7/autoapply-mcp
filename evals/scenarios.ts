@@ -99,7 +99,7 @@ export const SCENARIOS: Scenario[] = [
   },
   {
     id: "refused",
-    prompt: "Submit application {applicationId} in auto mode.",
+    prompt: "Submit application {applicationId}.",
     postingContent: DEFAULT_POSTING,
     setup: preparedApplication,
     check: (run) => {

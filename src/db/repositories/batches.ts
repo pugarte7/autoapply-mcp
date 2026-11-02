@@ -11,8 +11,7 @@ import { sha256 } from "../../util/hash.js";
  * content that changed afterwards.
  */
 
-/** `awaiting_code`: parked at a verification gate with its browser held, until provide_verification_code. */
-export type BatchItemState = "ready" | "needs_human" | "submitted" | "failed" | "skipped" | "awaiting_code";
+export type BatchItemState = "ready" | "needs_human" | "submitted" | "failed" | "skipped";
 
 export type BatchItem = {
   batchId: string;
@@ -130,6 +129,11 @@ export function setBatchItemState(db: Db, batchId: string, applicationId: string
     batchId,
     applicationId,
   );
+}
+
+/** The batch item for an application is done once its submission is recorded. */
+export function markItemSubmitted(db: Db, applicationId: string): void {
+  db.prepare("UPDATE batch_items SET state = 'submitted' WHERE application_id = ?").run(applicationId);
 }
 
 export function batchSummary(db: Db, batchId: string): Record<string, number> {

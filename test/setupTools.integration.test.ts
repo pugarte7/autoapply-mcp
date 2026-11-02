@@ -171,22 +171,16 @@ describe("setup_profile", () => {
 });
 
 describe("update_campaign", () => {
-  it("creates an auto campaign without asking, and asks before going from assisted to auto", async () => {
+  it("creates a campaign without asking", async () => {
     const { shown } = await start({ files: { profile: makeProfile() }, answer: () => false });
     const campaign = JSON.parse(JSON.stringify(makeCampaign())) as Record<string, any>;
     delete campaign.submission;
 
-    const created = (await call("update_campaign", { ...campaign, submission: { mode: "auto", dailyLimit: 10 } })).json();
+    const created = (await call("update_campaign", { ...campaign, submission: { dailyLimit: 10 } })).json();
     expect(created.saved).toBe("file");
     expect(shown).toHaveLength(0);
-    expect(readJson("campaign.json").submission).toEqual({ mode: "auto", dailyLimit: 10 });
-
-    await call("update_campaign", { submission: { mode: "assisted" } });
-    expect(shown).toHaveLength(0);
-    const raised = (await call("update_campaign", { submission: { mode: "auto" } })).json();
-    expect(shown[0]).toMatch(/submit applications/);
-    expect(readJson("campaign.json").submission.mode).toBe("assisted");
-    expect(raised.workspace.loaded).toBe(true);
+    expect(readJson("campaign.json").submission).toEqual({ dailyLimit: 10 });
+    expect(created.workspace.loaded).toBe(true);
   });
 
   it("removes a blocked question category once the person confirms", async () => {
@@ -314,6 +308,21 @@ describe("onboarding_questions", () => {
     const report = (await call("onboarding_questions")).json();
     expect(report.message).toMatch(/Since which year have you used each of these professionally: Python, Open Policy Agent/);
     expect(report.message).toMatch(/Earliest start date/);
+  });
+
+  it("asks once whether required privacy notices may be accepted, outside the answer-bank list", async () => {
+    const profile = makeProfile({
+      answers: [
+        { key: "acknowledgement", label: "I acknowledge and agree", patterns: ["i acknowledge"], answer: "", allowAutoFill: true },
+      ],
+    });
+    await start({ files: { profile, campaign: makeCampaign() } });
+    const report = (await call("onboarding_questions")).json();
+    const asked = report.groups.flatMap((group: any) => group.questions);
+    expect(asked).toContainEqual(expect.objectContaining({ field: "answers.acknowledgement" }));
+    expect(asked.find((entry: any) => entry.field === "answers.acknowledgement").optional).not.toBe(true);
+    expect(report.message).toMatch(/privacy notice/);
+    expect(report.message).not.toMatch(/Saved questions with no answer yet[^\n]*I acknowledge and agree/);
   });
 });
 

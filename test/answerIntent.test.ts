@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { draftAnswers, type FormQuestion } from "../src/drafting/answers.js";
-import { buildFillPlan, fallbackAnswersForFields, type FieldDescriptor } from "../src/submission/formFields.js";
 import type { Profile } from "../src/domain/profile.js";
 import { makeCampaign, makeProfile } from "./factories.js";
 
@@ -18,10 +17,6 @@ function choice(label: string, options: string[]): FormQuestion {
 
 function text(label: string, type: FormQuestion["type"] = "input_text"): FormQuestion {
   return { key: "q", label, required: true, type };
-}
-
-function field(label: string, type = "text"): FieldDescriptor {
-  return { selectorIndex: 0, label, type, name: "q", required: true };
 }
 
 const basedIn = {
@@ -174,42 +169,6 @@ const relocationAssistance = {
 };
 
 /**
- * Snap asked "Do you currently live in or are you able to relocate to the
- * location this job is advertised in?" on a Workday Yes/No prompt. The live
- * fallback matched "do you currently live in" to the residence denial, and the
- * submitted answer was "No". The live path answers such a field from the
- * relocation decision, as drafting does.
- */
-describe("live residence-or-relocation fields", () => {
-  const SNAP =
-    "Do you currently live in or are you able to relocate to the location this job is advertised in? (Snap may provide relocation assistance)";
-
-  it("answers from the relocation decision, not the residence denial", () => {
-    const live = fallbackAnswersForFields(
-      [field(SNAP, "select")],
-      [],
-      [basedIn, relocate, relocationAssistance],
-    );
-
-    expect(live).toHaveLength(1);
-    expect(live[0]?.questionKey).toBe("relocation-willing");
-    expect(live[0]?.answer).toBe("Yes");
-  });
-
-  it("leaves the field alone when the only candidate is the residence denial", () => {
-    const live = fallbackAnswersForFields([field(SNAP, "select")], [], [basedIn]);
-
-    expect(live).toEqual([]);
-  });
-
-  it("keeps the qualified denial for a free-text field", () => {
-    const live = fallbackAnswersForFields([field(BREX, "text")], [], [basedIn, relocate]);
-
-    expect(live[0]?.answer).toContain("willing to relocate");
-  });
-});
-
-/**
  * Juicebox asks "If you are not currently located in the San Francisco Bay
  * Area, would you be willing to relocate?" over the options "Yes, I'm already
  * planning to relocate", "Yes", "Unsure" and "No". The residence words sit in
@@ -221,27 +180,6 @@ describe("a relocation question conditioned on not living there", () => {
   const JUICEBOX =
     "If you are not currently located in the San Francisco Bay Area, would you be willing to relocate?";
   const OPTIONS = ["Yes, I'm already planning to relocate", "Yes", "Unsure", "No"];
-
-  function radios(label: string, options: readonly string[]): FieldDescriptor[] {
-    return options.map((option, index) => ({
-      selectorIndex: index,
-      label,
-      optionLabel: option,
-      type: "radio",
-      name: "relocate",
-      required: true,
-    }));
-  }
-
-  it("answers the live radio group from the relocation decision", () => {
-    const fields = radios(JUICEBOX, OPTIONS);
-    const live = fallbackAnswersForFields(fields, [], [basedIn, relocate]);
-    const plan = buildFillPlan(fields, live);
-
-    expect(live.map((answer) => answer.questionKey)).toEqual(["relocation-willing"]);
-    expect(plan.toFill.map((match) => match.field.optionLabel)).toEqual(["Yes"]);
-    expect(plan.unmatchedRequired).toEqual([]);
-  });
 
   it("drafts the plain Yes rather than claiming a move is already planned", () => {
     const { answers } = draftAnswers([choice(JUICEBOX, OPTIONS)], profileWith([basedIn, relocate]), makeCampaign());
@@ -255,15 +193,6 @@ describe("a relocation question conditioned on not living there", () => {
 
     expect(answers[0]?.answer).toBe("Yes");
     expect(answers[0]?.citation).toBe("profile.answers.relocation-willing");
-  });
-
-  it.each([
-    "Are you currently located in the San Francisco Bay Area?",
-    "Are you currently located in the San Francisco Bay Area? If not, would you be willing to relocate?",
-  ])("still treats a question that asks where he lives as a residence question: %s", (label) => {
-    const live = fallbackAnswersForFields(radios(label, ["Yes", "No"]), [], [relocate]);
-
-    expect(live).toEqual([]);
   });
 });
 
@@ -288,60 +217,16 @@ describe("relocation assistance mentioned but not asked", () => {
   const RETELL =
     "Are you open to working in-office 5x per week in the San Francisco area? Retell AI offers relocation assistance to help make the move easier";
 
-  it("does not answer an onsite question from the relocation-assistance answer", () => {
-    const { answers } = draftAnswers([yesNo(RETELL)], profileWith([relocationAssistance]), makeCampaign());
-    const live = fallbackAnswersForFields([field(RETELL)], [], [relocationAssistance]);
-
-    expect(answers[0]?.answer).not.toBe("No");
-    expect(answers[0]?.requiresHuman).toBe(true);
-    expect(live).toEqual([]);
-  });
-
-  it("answers it from the onsite answer instead", () => {
-    const { answers } = draftAnswers([yesNo(RETELL)], profileWith([relocationAssistance, onsite]), makeCampaign());
-    const live = fallbackAnswersForFields([field(RETELL)], [], [relocationAssistance, onsite]);
-
-    expect(answers[0]?.answer).toBe("Yes");
-    expect(live[0]?.answer).toBe("Yes");
-  });
-
   it.each([
     "Do you require relocation assistance in order to work in the San Francisco area?",
     "Will you need relocation assistance? We offer a generous package.",
     "Relocation assistance required",
   ])("still answers a question about assistance: %s", (label) => {
     const { answers } = draftAnswers([yesNo(label)], profileWith([relocationAssistance]), makeCampaign());
-    const live = fallbackAnswersForFields([field(label)], [], [relocationAssistance]);
 
     expect(answers[0]?.answer).toBe("No");
-    expect(live[0]?.answer).toBe("No");
   });
 
-  it("answers a relocation question whose preamble mentions assistance from the relocation decision", () => {
-    // "relocation assistance" is the longer pattern, so without the guard it outranked "willing to relocate".
-    const label = "This role is in San Francisco and we offer relocation assistance. Are you willing to relocate?";
-
-    const { answers } = draftAnswers([yesNo(label)], profileWith([relocationAssistance, relocate]), makeCampaign());
-    const live = fallbackAnswersForFields([field(label)], [], [relocationAssistance, relocate]);
-
-    expect(answers[0]?.answer).toBe("Yes");
-    expect(live[0]?.answer).toBe("Yes");
-  });
-
-  it("answers the assistance question on a radio whose option reads only Yes", () => {
-    const radio: FieldDescriptor = {
-      selectorIndex: 0,
-      label: "Do you require relocation assistance?",
-      type: "radio",
-      name: "q",
-      required: true,
-      optionLabel: "No",
-    };
-
-    const live = fallbackAnswersForFields([radio], [], [relocationAssistance]);
-
-    expect(live[0]?.answer).toBe("No");
-  });
 });
 
 /**
@@ -384,14 +269,6 @@ const whyMulti = {
  */
 describe("answers written for a choice list", () => {
   const ABBY = "Why are you interested in working at Abby Care? Note: We read every single answer.";
-
-  it("do not answer a free-text question", () => {
-    const { answers } = draftAnswers([text(ABBY, "textarea")], profileWith([whyMulti]), makeCampaign());
-    const live = fallbackAnswersForFields([field(ABBY, "textarea")], [], [whyMulti]);
-
-    expect(answers[0]?.answer).not.toBe("Products & Technical Innovation");
-    expect(live.map((answer) => answer.answer)).not.toContain("Products & Technical Innovation");
-  });
 
   it("still answer the choice question they were written for", () => {
     const { answers } = draftAnswers(

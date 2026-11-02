@@ -6,20 +6,18 @@ This server automates a process that has real consequences: a bad submission rea
 
 Discovery, gating, scoring and drafting are fully automated. Submission needs a decision by the person: either on the packet itself, on the batch that holds it, or on a set of standing rules they approved ahead of time that cover it.
 
-`submit_application` re-checks every one of these before anything reaches an employer:
+The server never opens an employer's site. `submit_application` re-checks every one of these before it hands the agent the packet to send with its own browser:
 
 | Guard | Refusal code |
 |---|---|
 | Application already sent | `already_submitted` |
-| Requested mode exceeds the campaign's configured mode | `mode_not_permitted` |
-| Board has no browser submission (SmartRecruiters, Workable, Recruitee, Apple) | `ats_browser_not_supported` |
 | No recorded human approval, and no active standing rules | `not_approved` |
 | Active standing rules exist, but none covers this application | `rules_not_matched` |
-| The covering rules have used their daily or per-run allowance | `rules_daily_cap_reached`, `rules_run_cap_reached` |
+| The covering rules have used their daily allowance | `rules_daily_cap_reached` |
 | Content changed since approval | `packet_changed` |
 | A question needing a human is still unanswered | `unresolved_questions` |
 | Destination host is not allowlisted | `destination_not_allowed` |
-| Auto mode for a company missing from a non-empty `allowedCompanies` | `company_not_allowlisted` |
+| Company missing from a non-empty `allowedCompanies` | `company_not_allowlisted` |
 | Configured daily submission cap reached | `daily_limit_reached` |
 | Minimum interval between submissions not elapsed | `pacing` |
 
@@ -39,9 +37,9 @@ A rule set covers an application only when all of these hold:
 - every question in a person-only category (work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, legal attestations) carries a standing answer the person recorded in `profile.answers` or `profile.personal` with auto-fill. An answer passed through `set_application_content` never counts, whatever source it is labelled with, because the agent calls that tool. Trimming `blockedQuestionCategories` in the campaign does not hand these categories to the rules
 - no suggestion the drafting engine flagged for a person is still unconfirmed
 - a cover letter or essay the agent wrote is only sent when the rules say `allowAgentDraftedText: true`
-- the rule set has room left under its `maxPerDay` and `maxPerRun`
+- the rule set has room left under its `maxPerDay`
 
-Everything else in the table above still applies to a rules-authorised application: campaign mode, allowed destinations, exclusions, the company allowlist for auto mode, the per-company cap, the daily limit, pacing, the resume check and unresolved questions. A packet the person rejected stays rejected, and one they approved and that changed afterwards is refused as `packet_changed`, rules or not. Every submission's audit event says whether a packet approval or which rule set authorised it.
+Everything else in the table above still applies to a rules-authorised application: allowed destinations, exclusions, the company allowlist, the per-company cap, the daily limit, pacing, the resume check and unresolved questions. A packet the person rejected stays rejected, and one they approved and that changed afterwards is refused as `packet_changed`, rules or not. Every submission's audit event says whether a packet approval or which rule set authorised it.
 
 What the person gives up is honest to state: answers to ordinary questions that the agent wrote from the profile and CV, and with `allowAgentDraftedText` its cover letters and essays, reach the employer without being read first. Keep the rules narrow, and read the daily digest.
 
@@ -67,8 +65,8 @@ Where question phrasings overlap, the longest matching pattern wins. This matter
 A generic work-authorization answer cannot establish permission for any/all
 employers, unrestricted authorization, or indefinite/permanent authorization.
 Those qualifiers require a matching explicit approval in the answer bank.
-Drafting and live-form fallbacks apply the same scope check; a generic
-sponsorship fallback cannot bypass it. Existing profile facts are not changed.
+Drafting applies the same scope check; a generic sponsorship fallback cannot
+bypass it. Existing profile facts are not changed.
 
 A derived residence-country value can fill a country/address-country control,
 not a legal-age, citizenship, documentation or work-permission attestation that
@@ -78,18 +76,6 @@ Recruiting-source questions only match answers about the recruiting source.
 A personal website or LinkedIn URL cannot answer "How did you hear about this
 job?", even when a checkbox is named `website` or offers a LinkedIn option.
 Without an explicit source answer, the question remains unresolved.
-
-Lever controls are associated with their enclosing question, not just a generic
-choice such as "Yes" or "No". The complete question is retained up to 2,000
-characters so trailing sponsorship definitions and consent terms are not lost.
-When Lever is still analyzing the uploaded resume, field filling waits for its
-native processing indicator to finish so late autofill cannot overwrite reviewed
-answers. A processing timeout is surfaced rather than silently ignored.
-Lever's current-location autocomplete is selected through its native suggestions
-and verified against both the visible label and its native selected-location
-record. Searching by a shorter city name never authorizes selecting a different
-country, and the browser does not manufacture hidden location data or CAPTCHA
-tokens. An interactive challenge during lookup stops the run.
 
 Job-location classification does not treat office floor markers such as `FL 7`
 as Florida, while retaining state abbreviations followed by real ZIP codes.
@@ -105,28 +91,6 @@ qualification claim.
 Institutional or technical uses of "state", such as state-owned enterprises and
 state machines, do not resolve to the candidate's postal province or address.
 Unanswered political-exposure and experience questions remain blocked.
-
-Workday employment month/year and education year controls are distinguished by
-their native history identifiers, so two fields labelled "From" cannot exchange
-values. Month-level history does not invent a day, current employment does not
-invent an end date, and `MM/YYYY` or `YYYY` placeholders are not completed answers.
-
-Workday resumes saved drafts, so a prompt can still hold a value from an earlier
-run. That value is kept only when no approved answer is on offer. When one is on
-offer but will not select, or a probe's selection cannot be undone, the run stops
-even if the question is optional, because the form would otherwise be sent with
-a claim nobody approved. A selection is confirmed by reading the widget back; a
-single-select's unchanged "1 item selected" announcement is not evidence. The
-Review-page check does not count the employer's own name as confirming an
-answer, since it appears on every page.
-
-A Workday "Take Assessment" step is declined only when it is the Work
-Opportunity Tax Credit questionnaire and the step itself offers an opt-out. The
-run presses "Take Assessment", then the vendor's opt-out, so nothing about
-veteran status, public assistance or similar circumstances is disclosed.
-Cookie and marketing opt-outs are never pressed, a confirmation is answered
-only when the vendor explicitly asks "are you sure", and only the vendor's host
-is logged. Any other assessment, such as a skills test, is left for a person.
 
 A bare "Yes" or "No" option stands only for an answer that opens with that word
 followed by punctuation, on every board. "Not Applicable/No Driving
@@ -151,7 +115,7 @@ By default these categories never auto-fill:
 
 They are legally material, ethically sensitive, or negotiation-relevant. Getting them wrong can invalidate an application or an offer.
 
-Of these, only you can answer work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, and an attestation that claims something about you (a bare consent to a privacy notice claims nothing). Any question mentioning pay goes to you whatever it classifies as. The agent is told to gather all of these across every pending application into one message. Essays, references and the rest it answers from your profile, and you see them at approval.
+Of these, only you can answer work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, attestations, and consents: a privacy notice or data-processing consent is yours to give. The profile template leaves these consents blank, so you are asked once and your answer is reused; until you have said yes, a form's lone "I acknowledge" option is not taken for you either. Optional consents, such as a talent pool or marketing, are declined. Any question mentioning pay goes to you whatever it classifies as. The agent is told to gather all of these across every pending application into one message. Essays, references and the rest it answers from your profile, and you see them at approval.
 
 A category block can be satisfied in advance, but only by an explicit prior decision recorded in the profile: a `profile.answers` entry with `allowAutoFill: true`, or a `profile.personal` field with `autoFill: true`. This does not weaken the rule; it moves the decision earlier, where it gets more thought than it would on the hundredth form.
 
@@ -159,7 +123,7 @@ Work authorization is held to a stricter standard. It auto-fills only when `work
 
 ## Accounts on employer boards
 
-Registering an account in your name is a bigger step than filling a public form. The server registers one on Workday, which has no other way to apply, and in `assisted` runs, where you are at the window. In `auto` mode it registers on other boards only once `AUTOAPPLY_ATS_PASSWORD` is set, which is the decision to let it. The password stays in the environment and is redacted from every log and result.
+Workday, and the career sites of Google, Meta, Amazon and Apple, take applications only from a signed-in account. The server creates no account and holds no password: the agent's browser does that, in your name, and an agent should ask you before registering one.
 
 ## Batch approval
 
@@ -168,7 +132,7 @@ Batches do not bypass any guard. `approve_batch` records a separate approval per
 - a **manifest hash** covering every packet in the set, so the batch cannot grow or change between review and approval
 - an **expected count**, so a batch that changed size cannot be approved by replaying an earlier call
 
-`submit_batch` re-runs every per-application guard for each submission rather than trusting the batch-level decision.
+`submit_batch` re-runs every per-application guard before it hands over each application rather than trusting the batch-level decision.
 
 ## Untrusted content
 
@@ -183,44 +147,17 @@ Job descriptions, careers pages and form labels are third-party input. The serve
 
 ## Anti-bot controls
 
-If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the person solves it, not the server. There is no solving, bypassing, proxying or fingerprint spoofing, no solver service, and none will be added.
-
-In a headed run the browser keeps the filled form open, brings its window to the
-front, and tells the person: a macOS notification, plus an MCP logging message
-so the agent can say so in the conversation. It then checks once a second until
-the challenge frames are gone (and, for a challenge raised by the submit click,
-until the page no longer asks for one), for at most `captchaWaitSeconds`
-(default 180, at most 900, per challenge). Once the challenge is cleared the run
-carries on where it stopped: it finishes filling, re-checks the choices it made,
-and clicks submit only if submission was requested and every guard already
-passed. If the time runs out, or the window is closed, the run aborts as it
-always did: it captures a screenshot and the application is marked
-`needs_human`. The result reports `captchaHandedOff: true` and
-`captchaHandoffSeconds` whenever a challenge was handed over. `captchaWaitSeconds:
-0` turns the handoff off.
-
-A headless run cannot show anyone a challenge. When it meets one it stops,
-without marking anything `needs_human`, and the same application is filled again
-once in a visible browser, where the challenge is handed over as above if it
-appears again. That retry only happens where a display is plausibly there (macOS,
-or Linux with `DISPLAY` set); otherwise the headless run aborts as before.
-
-Challenge detection checks every matching iframe, not just the first one, because
-providers may retain hidden frames alongside a visible puzzle. The browser
-rechecks after uploads, while filling, before reporting a prepared form, and
-immediately before a submit click. A late challenge must not be reported as a
-successfully prepared form. Hidden frames and passive badges alone are not
-interactive challenges, so they are never handed over either.
+A CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge, and any form question that asks whether the applicant is a bot or an AI, belongs to the person. The server's instructions tell the agent to stop and hand over the open page, never to solve, bypass or answer one. There is no solving, proxying or fingerprint spoofing, no solver service, and none will be added. Drafting never fills a question built to detect automated filling either.
 
 Requests are throttled per host, retried with backoff only on 429 and 5xx, and identify themselves honestly through the User-Agent.
 
 ## Privacy
 
-- Configuration, database and artifacts stay on your machine. Nothing is sent anywhere except the employer boards you configure.
+- Configuration and database stay on your machine. The server contacts only the boards and sources you configure; your agent sends each application.
 - Personal data belongs in `~/.autoapply`, outside the repository, so publishing a checkout cannot leak it. Nothing in the repository is candidate-specific.
 - Logs and audit payloads pass through redaction that strips emails, phone numbers, government identifiers, card numbers and credential-shaped strings.
 - Answers in sensitive categories are never persisted in plain text by the redacting storage helper.
-- `config/`, `data/` and `artifacts/` are gitignored. Keep them that way: application history is sensitive.
+- `config/` and `data/` are gitignored. Keep them that way: application history is sensitive.
 
 ## Rate and volume discipline
 
@@ -241,7 +178,8 @@ submissions.
 - Solve or evade anti-bot challenges
 - Fabricate experience, skills, dates or metrics
 - Answer immigration, compensation, demographic or legal questions on your behalf
-- Submit without a human decision: an approval bound to the packet's content, or standing rules the person approved that cover it
+- Hand over a packet without a human decision: an approval bound to the packet's content, or standing rules the person approved that cover it
+- Open, fill or submit an employer's form itself
 
 ## Residual risks you own
 

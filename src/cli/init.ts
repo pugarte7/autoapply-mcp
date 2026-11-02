@@ -59,7 +59,6 @@ export function initHome(paths: WorkspacePaths, preset: PresetName, root: string
   }
 
   mkdirSync(join(paths.home, "resumes"), { recursive: true });
-  mkdirSync(paths.artifacts, { recursive: true });
   mkdirSync(dirname(paths.database), { recursive: true });
   lines.push(`OK    ${join(paths.home, "resumes")} - ready for your resume PDFs`);
   return { ok: failed === 0, lines };
