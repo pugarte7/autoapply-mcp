@@ -52,7 +52,8 @@ them by name; otherwise follow the steps below, which are the same.
 ### Every day: `daily_apply`
 
 1. Read `autoapply://agenda`. With no companies configured, call `load_preset`
-   first (`spain` for a candidate in Spain).
+   first (`spain` for a candidate in Spain). For a candidate in Spain, call it
+   every day: it adds the companies spanishtoptechcompanies.com listed since.
 2. `discover_jobs`, `list_queue`, pick the best openings within today's budget.
 3. `prepare_application` or `prepare_batch`. Write cover letters and essays only
    from the match report's facts. Fill every answer the profile supports with
