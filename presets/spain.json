@@ -1,0 +1,970 @@
+{
+  "version": 1,
+  "companies": [
+    {
+      "name": "Abacum",
+      "ats": "ashby",
+      "board": "abacum",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "palma-de-mallorca"
+      ]
+    },
+    {
+      "name": "Adyen",
+      "ats": "greenhouse",
+      "board": "adyen",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Affirm",
+      "ats": "greenhouse",
+      "board": "affirm",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Airbus",
+      "ats": "workday",
+      "board": "ag/wd3/Airbus",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid",
+        "cadiz",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Aircall",
+      "ats": "greenhouse",
+      "board": "aircallioinc",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Back Market",
+      "ats": "ashby",
+      "board": "backmarket",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "BBVA",
+      "ats": "workday",
+      "board": "bbva/wd3/BBVA",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid",
+        "bilbao",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Bitpanda",
+      "ats": "greenhouse",
+      "board": "bitpanda",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Blacklane",
+      "ats": "greenhouse",
+      "board": "blacklane",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Brainly",
+      "ats": "ashby",
+      "board": "brainly",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Bynder",
+      "ats": "ashby",
+      "board": "bynder",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Cabify",
+      "ats": "greenhouse",
+      "board": "cabify",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid",
+        "alicante",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Canonical",
+      "ats": "greenhouse",
+      "board": "canonical",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "valladolid",
+        "pontevedra"
+      ]
+    },
+    {
+      "name": "Carwow",
+      "ats": "ashby",
+      "board": "Carwow",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Celonis",
+      "ats": "greenhouse",
+      "board": "celonis",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Cloudflare",
+      "ats": "greenhouse",
+      "board": "cloudflare",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Contentsquare",
+      "ats": "lever",
+      "board": "contentsquare",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Criteo",
+      "ats": "workday",
+      "board": "criteo/wd3/Criteo_Career_Site",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "CrowdStrike",
+      "ats": "workday",
+      "board": "crowdstrike/wd5/crowdstrikecareers",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Datadog",
+      "ats": "greenhouse",
+      "board": "datadog",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "dLocal",
+      "ats": "lever",
+      "board": "dlocal",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Docplanner",
+      "ats": "ashby",
+      "board": "docplanner",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "EcoVadis",
+      "ats": "smartrecruiters",
+      "board": "ecovadis",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Elastic",
+      "ats": "greenhouse",
+      "board": "elastic",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "ESW",
+      "ats": "greenhouse",
+      "board": "esw",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Exoticca",
+      "ats": "workable",
+      "board": "exoticca",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Expedia Group",
+      "ats": "workday",
+      "board": "expedia/wd108/search",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Fever",
+      "ats": "greenhouse",
+      "board": "feverup",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona",
+        "zaragoza"
+      ]
+    },
+    {
+      "name": "Flywire",
+      "ats": "workday",
+      "board": "flywire/wd108/flywirecareers",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "valencia",
+        "madrid",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Freenow",
+      "ats": "greenhouse",
+      "board": "freenow",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Genesys",
+      "ats": "workday",
+      "board": "genesys/wd1/Genesys",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Grafana Labs",
+      "ats": "greenhouse",
+      "board": "grafanalabs",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "IQVIA",
+      "ats": "workday",
+      "board": "iqvia/wd1/IQVIA",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Job&Talent",
+      "ats": "lever",
+      "board": "jobandtalent",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Johnson & Johnson",
+      "ats": "workday",
+      "board": "jj/wd5/JJ",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Kiwi.com",
+      "ats": "ashby",
+      "board": "kiwi-com",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Kraken",
+      "ats": "ashby",
+      "board": "kraken.com",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Lodgify",
+      "ats": "lever",
+      "board": "lodgify",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "malaga"
+      ]
+    },
+    {
+      "name": "Manychat",
+      "ats": "ashby",
+      "board": "manychat",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Materialise",
+      "ats": "workday",
+      "board": "materialise/wd103/Materialise_Jobs",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Mitek Systems",
+      "ats": "lever",
+      "board": "miteksystems-2",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "MongoDB",
+      "ats": "greenhouse",
+      "board": "mongodb",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Monzo",
+      "ats": "greenhouse",
+      "board": "monzo",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "MoonPay",
+      "ats": "lever",
+      "board": "moonpay",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Mozilla",
+      "ats": "greenhouse",
+      "board": "mozilla",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "N26",
+      "ats": "greenhouse",
+      "board": "n26",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Netskope",
+      "ats": "greenhouse",
+      "board": "netskope",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "New Relic",
+      "ats": "greenhouse",
+      "board": "newrelic",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid",
+        "malaga"
+      ]
+    },
+    {
+      "name": "NextRoll",
+      "ats": "greenhouse",
+      "board": "nextroll",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "a-coruna"
+      ]
+    },
+    {
+      "name": "NTT",
+      "ats": "workday",
+      "board": "nttglobaldatacenters/wd501/External",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "OLX Group",
+      "ats": "lever",
+      "board": "olx",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ],
+      "region": "eu"
+    },
+    {
+      "name": "Palo Alto Networks",
+      "ats": "workday",
+      "board": "paloaltonetworks/wd5/panwexternalcareers",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "PandaDoc",
+      "ats": "greenhouse",
+      "board": "pandadoc",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Pennylane",
+      "ats": "ashby",
+      "board": "pennylane",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Perk",
+      "ats": "ashby",
+      "board": "perk",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Pfizer",
+      "ats": "workday",
+      "board": "pfizer/wd1/PfizerCareers",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Picsart",
+      "ats": "greenhouse",
+      "board": "picsart",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "bilbao"
+      ]
+    },
+    {
+      "name": "Pleo",
+      "ats": "ashby",
+      "board": "pleo",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Preply",
+      "ats": "ashby",
+      "board": "preply",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Proton",
+      "ats": "greenhouse",
+      "board": "proton",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Provenir",
+      "ats": "ashby",
+      "board": "ProvenirInc",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "cadiz"
+      ]
+    },
+    {
+      "name": "Qonto",
+      "ats": "ashby",
+      "board": "qonto",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid",
+        "valencia"
+      ]
+    },
+    {
+      "name": "Real-Time Innovations",
+      "ats": "greenhouse",
+      "board": "rti",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "granada",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Repsol",
+      "ats": "workday",
+      "board": "repsol/wd3/Repsol",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Rover.com",
+      "ats": "lever",
+      "board": "rover",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "SailPoint",
+      "ats": "workday",
+      "board": "sailpoint/wd1/SailPoint",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "madrid"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Scopely",
+      "ats": "greenhouse",
+      "board": "scopely",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "seQura",
+      "ats": "recruitee",
+      "board": "sequra",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Stripe",
+      "ats": "greenhouse",
+      "board": "stripe",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "SUSE",
+      "ats": "workday",
+      "board": "suse/wd3/Jobsatsuse",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid",
+        "zaragoza"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Sysdig",
+      "ats": "lever",
+      "board": "sysdig",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "zaragoza",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Taxfix",
+      "ats": "ashby",
+      "board": "taxfix.com",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "TestGorilla",
+      "ats": "ashby",
+      "board": "testgorilla",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid"
+      ]
+    },
+    {
+      "name": "The Knot Worldwide",
+      "ats": "greenhouse",
+      "board": "theknotworldwide",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Thoughtworks",
+      "ats": "greenhouse",
+      "board": "thoughtworks",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid",
+        "malaga"
+      ]
+    },
+    {
+      "name": "TomTom",
+      "ats": "lever",
+      "board": "tomtom",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "madrid"
+      ],
+      "region": "eu"
+    },
+    {
+      "name": "Toptal",
+      "ats": "lever",
+      "board": "toptal",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "valencia"
+      ]
+    },
+    {
+      "name": "Trainline",
+      "ats": "ashby",
+      "board": "trainline",
+      "tier": "C",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Twilio",
+      "ats": "greenhouse",
+      "board": "twilio",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Typeform",
+      "ats": "greenhouse",
+      "board": "typeform",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "valencia",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Veepee",
+      "ats": "lever",
+      "board": "veepee",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Veeva Systems",
+      "ats": "lever",
+      "board": "veeva",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid",
+        "sevilla"
+      ]
+    },
+    {
+      "name": "Vonage",
+      "ats": "greenhouse",
+      "board": "vonage",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Wallapop",
+      "ats": "greenhouse",
+      "board": "wallapop",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona"
+      ]
+    },
+    {
+      "name": "Wizeline",
+      "ats": "greenhouse",
+      "board": "wizeline",
+      "tier": "B",
+      "tags": [
+        "spain",
+        "barcelona",
+        "valencia"
+      ]
+    },
+    {
+      "name": "Workato",
+      "ats": "greenhouse",
+      "board": "workato",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "barcelona",
+        "madrid"
+      ]
+    },
+    {
+      "name": "Workday",
+      "ats": "workday",
+      "board": "workday/wd5/Workday",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Zendesk",
+      "ats": "workday",
+      "board": "zendesk/wd1/zendesk",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "madrid",
+        "barcelona"
+      ],
+      "query": "Spain"
+    },
+    {
+      "name": "Zscaler",
+      "ats": "greenhouse",
+      "board": "zscaler",
+      "tier": "A",
+      "tags": [
+        "spain",
+        "valencia",
+        "madrid",
+        "sevilla"
+      ]
+    }
+  ]
+}

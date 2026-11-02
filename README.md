@@ -100,6 +100,8 @@ npm run init
 
 `init` creates `~/.autoapply` from the shipped examples, adds `resumes/`, `data/` and `artifacts/`, and prints the editing order. It never overwrites a file that already exists, so it is safe to re-run.
 
+Looking for work in Spain? Run `npm run init -- --preset spain` instead. It seeds a campaign in euros for offices in Spain and remote roles open from Spain or Europe, with tracks titled in English and Spanish, and a company list built from [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com). Without the flag `init` uses `--preset us-canada`, the US and Canada setup it always used. See [docs/CONFIGURATION.md](docs/CONFIGURATION.md#spain).
+
 ### The profile template
 
 `examples/profile.example.json` holds no personal data, compensation or location preferences. It does carry a bank of 170 recurring application questions, each matched to the wordings employers use:
@@ -121,6 +123,7 @@ mkdir -p ~/.autoapply
 cp examples/profile.example.json   ~/.autoapply/profile.json
 cp examples/campaign.example.json  ~/.autoapply/campaign.json
 cp presets/ai-security-us-canada.json ~/.autoapply/companies.json
+# or, for Spain: examples/campaign.spain.example.json and presets/spain.json
 ```
 
 Then edit them and verify:
@@ -139,7 +142,9 @@ WARN  campaign.json: "maxBatchSize" is ignored; it belongs at "submission.maxBat
 
 `presets/ai-security-us-canada.json` ships 135 company boards that were verified live against the ATS APIs, weighted toward AI, security and infrastructure companies in the US and Canada, alongside large-cap technology employers.
 
-Seven of those are Workday boards. Workday is fully supported for discovery, but applying to one means creating an account on that employer's tenant and walking a multi-step wizard, so expect those to need more hand-holding than a Greenhouse or Ashby posting.
+`presets/spain.json` ships 89 boards (37 Greenhouse, 18 Ashby, 13 Lever, 18 Workday and three others) of companies the salary site lists in Spain, each one publishing at least one posting in Spain or remote from Spain or Europe when it was built. `npm run preset:spain` rebuilds it.
+
+Seven of the US and Canada boards are Workday boards. Workday is fully supported for discovery, but applying to one means creating an account on that employer's tenant and walking a multi-step wizard, so expect those to need more hand-holding than a Greenhouse or Ashby posting.
 
 ### Additional listing sources
 
@@ -307,7 +312,7 @@ No. A detected CAPTCHA is shown to you in the filled browser window, with a noti
 
 ### Does it work for jobs in Europe or Spain?
 
-Yes. Location gates know Spain, Europe and their remote variants alongside the US and Canada. For pay in Spain, the `tech-pay-spain` MCP server gives salaries by company from [Spanish Top Tech Companies](https://spanishtoptechcompanies.com).
+Yes. Location gates know Spain, Europe and their remote variants alongside the US and Canada, and `npm run init -- --preset spain` sets up a campaign in euros with 89 employers hiring in Spain. For pay in Spain, the `tech-pay-spain` MCP server gives salaries by company from [Spanish Top Tech Companies](https://spanishtoptechcompanies.com).
 
 ### Is it free?
 
