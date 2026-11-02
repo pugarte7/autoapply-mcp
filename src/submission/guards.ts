@@ -3,6 +3,7 @@ import type { Application, Job } from "../domain/job.js";
 import type { ApprovalRecord } from "../db/repositories/applications.js";
 import { checkUrlAllowed } from "./allowlist.js";
 import { validateResumeFile } from "./resume.js";
+import { authoriseByRules, type StandingCheck } from "./standingRules.js";
 
 /**
  * The approval boundary.
@@ -36,6 +37,12 @@ export type GuardInput = {
   companyApplicationCount?: number;
   lastSubmissionAt: string | null;
   requestedMode: SubmissionMode;
+  /**
+   * Standing rules the person approved, consulted only for an application
+   * with no approval of its own. A packet the person approved or rejected
+   * keeps that decision: the rules never overrule it.
+   */
+  standing?: StandingCheck;
   now?: Date;
 };
 
@@ -44,6 +51,10 @@ export type GuardResult = {
   code: string;
   reason: string;
   waitSeconds?: number;
+  /** Set when standing rules, not a per-packet approval, authorised this one. */
+  rulesId?: string;
+  /** The refusal lifts by itself later (a cap), so a run defers rather than fails. */
+  deferrable?: boolean;
 };
 
 function deny(code: string, reason: string, waitSeconds?: number): GuardResult {
@@ -75,10 +86,18 @@ export function checkSubmissionAllowed(input: GuardInput): GuardResult {
     );
   }
 
-  if (!approval || approval.decision !== "approved") {
+  let rulesId: string | undefined;
+  if (!approval) {
+    const verdict = authoriseByRules(application, job, campaign, input.standing, now);
+    if (!verdict.allowed) {
+      return verdict.deferrable
+        ? { allowed: false, code: verdict.code, reason: verdict.reason, deferrable: true }
+        : deny(verdict.code, verdict.reason);
+    }
+    rulesId = verdict.rulesId;
+  } else if (approval.decision !== "approved") {
     return deny("not_approved", "no recorded human approval for this application");
-  }
-  if (approval.packetHash !== application.packetHash) {
+  } else if (approval.packetHash !== application.packetHash) {
     return deny(
       "packet_changed",
       "application content changed after approval; re-approve the current packet before submitting",
@@ -156,7 +175,9 @@ export function checkSubmissionAllowed(input: GuardInput): GuardResult {
     }
   }
 
-  return { allowed: true, code: "ok", reason: "all submission guards passed" };
+  return rulesId
+    ? { allowed: true, code: "ok", reason: `all submission guards passed; authorised by standing rules ${rulesId}`, rulesId }
+    : { allowed: true, code: "ok", reason: "all submission guards passed" };
 }
 
 export function startOfDayIso(now = new Date()): string {

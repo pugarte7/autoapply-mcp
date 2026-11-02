@@ -164,6 +164,28 @@ Asks the person, not the model, to approve the exact packet, and records their a
 
 A mismatched hash fails with `packet_hash_mismatch`, before the person is asked. If they say no, nothing is recorded and the result's `decision` is `"declined"`.
 
+### `approve_rules`
+Proposes standing rules and asks the person to approve them once, through the same dialog. Afterwards an application with no approval of its own can be submitted when an active rule set covers it. Without a dialog the person runs `node dist/cli/approve.js rules <rulesId> <rulesHash>` in their own terminal. A declined proposal is revoked so it cannot be approved later. See [SAFETY.md](SAFETY.md#standing-rules).
+
+| Input | Type | Notes |
+|---|---|---|
+| `tiers` | `("A"\|"B"\|"C")[]` | Defaults to A and B |
+| `minScore` | `number?` | |
+| `companies` | `string[]?` | Empty means any company whose posting passed the campaign gates |
+| `excludeCompanies` | `string[]?` | |
+| `tracks` | `string[]?` | Campaign track ids; empty means every track |
+| `atsKinds` | `string[]?` | e.g. `["greenhouse","ashby"]`; empty means every board |
+| `maxPerDay` | `number` | Submissions these rules may authorise per day |
+| `maxPerRun` | `number` | Per `submit_batch` call or daily run |
+| `allowAgentDraftedText` | `boolean` | Cover letters and essays the agent wrote from profile facts. Default false |
+| `expiresAt` | `string?` | ISO date; defaults to 30 days, at most 90 |
+
+### `list_rules`
+Every rule set with its status (`proposed`, `active`, `expired`, `revoked`), how it was approved (`dialog` or `cli`) and how many submissions it authorised today.
+
+### `revoke_rules`
+Ends a rule set at once. Needs no confirmation.
+
 ### `submit_application`
 Runs every guard, then acts according to mode.
 
@@ -224,7 +246,10 @@ Asks the person to approve every ready application, listed by company and title,
 Submits the approved set in `auto` (default) or `assisted` mode, re-running all
 guards per application and honouring pacing and any configured daily limit.
 `submission.dailyLimit: null` removes the daily ceiling, not per-batch,
-per-company, approval or destination checks.
+per-company, approval or destination checks. A batch nobody approved is
+accepted while standing rules are active: the applications they cover are
+sent, the rest are reported as `awaiting_approval` and stay ready, and a rule
+cap reached defers the remainder.
 
 | Input | Type |
 |---|---|

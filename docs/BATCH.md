@@ -12,6 +12,8 @@ submit_batch    submit the set, honouring daily limit and pacing
 list_batches    track progress
 ```
 
+To run without anyone at the keyboard, the person approves standing rules once with `approve_rules`; `submit_batch` then sends the applications those rules cover, and [DAILY.md](DAILY.md) schedules the whole flow every morning.
+
 ## prepare_batch
 
 Selects queued jobs matching a filter and prepares each one through the same code path as `prepare_application`.

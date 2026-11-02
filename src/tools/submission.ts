@@ -1,18 +1,12 @@
 import { z } from "zod";
 import { SUBMISSION_MODES, type SubmissionMode } from "../domain/campaign.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import {
-  countSubmittedSince,
-  lastSubmissionAt,
-  latestApproval,
-  saveApplication,
-} from "../db/repositories/applications.js";
+import { saveApplication } from "../db/repositories/applications.js";
 import { appendEvent } from "../db/repositories/events.js";
-import { applicationCountsByCompany } from "../db/repositories/jobs.js";
 import { applicationQuestion, askPerson, packetFor, recordApplicationDecision } from "../submission/approvals.js";
 import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
-import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
+import { authorisedBy, noteRulesUse, submissionGuard, type RunLedger } from "../submission/authorise.js";
 import { AppError } from "../util/errors.js";
 import { nowIso } from "../util/hash.js";
 import { abortedNextStep, fieldsToAnswer, formRunOptions, waitForCodeSecondsInput, type FieldToAnswer } from "./formRun.js";
@@ -94,18 +88,8 @@ export function registerSubmissionTools(server: McpServer): void {
     handler(async (args: { applicationId: string; mode?: SubmissionMode; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number }) => {
       const { workspace, application, job, packet, currentHash } = packetFor(args.applicationId);
       const mode = args.mode ?? "auto";
-      const approval = latestApproval(workspace.db, application.id);
-
-      const guard = checkSubmissionAllowed({
-        application: { ...application, packetHash: currentHash },
-        job,
-        campaign: workspace.campaign,
-        approval,
-        submittedToday: countSubmittedSince(workspace.db, startOfDayIso()),
-        companyApplicationCount: applicationCountsByCompany(workspace.db).get(job.companyName.toLowerCase()) ?? 0,
-        lastSubmissionAt: lastSubmissionAt(workspace.db),
-        requestedMode: mode,
-      });
+      const ledger: RunLedger = new Map();
+      const guard = submissionGuard(workspace, application, job, currentHash, mode, ledger);
 
       if (!guard.allowed) {
         appendEvent(workspace.db, "submission.blocked", application.id, { code: guard.code, mode });
@@ -134,10 +118,12 @@ export function registerSubmissionTools(server: McpServer): void {
           confirmationRef: result.confirmationText.slice(0, 200),
           artifactPath: result.screenshotPath,
         });
+        noteRulesUse(workspace, application.id, guard, ledger);
         appendEvent(workspace.db, "submission.submitted", application.id, {
           mode,
           finalUrl: result.finalUrl,
           company: job.companyName,
+          ...authorisedBy(guard),
         });
       } else if (result.status === "aborted") {
         const answers = mergeDiscoveredQuestions(application.answers, result.unmatchedRequired, workspace.profile.answers);
@@ -158,6 +144,7 @@ export function registerSubmissionTools(server: McpServer): void {
       return ok({
         applicationId: application.id,
         mode,
+        ...authorisedBy(guard),
         result,
         fieldsToAnswer: result.status === "aborted" ? unanswered : undefined,
         nextStep:
