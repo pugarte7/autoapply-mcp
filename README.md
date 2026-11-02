@@ -5,7 +5,7 @@
 [![Node.js 22.5+](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen.svg)](https://nodejs.org)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-server-8A2BE2.svg)](https://modelcontextprotocol.io)
 
-**autoapply-mcp** is an open-source [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an AI agent such as Claude, Cursor or Codex search for jobs and apply to them for you. It discovers postings on public Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable and Recruitee boards, applies hard eligibility gates, ranks what survives with quotable evidence, and drafts only the answers your profile actually supports. Once you approve an application, your agent sends it with its own browser. Nothing goes out without your approval.
+**autoapply-mcp** is an open-source [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an AI agent such as Instinct, Claude Code, Cursor or Codex search for jobs and apply to them for you. It discovers postings on public Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable and Recruitee boards, applies hard eligibility gates, ranks what survives with quotable evidence, and drafts only the answers your profile actually supports. Once you approve an application, your agent sends it with its own browser. Nothing goes out without your approval.
 
 There is nothing to install beyond one line in your MCP client: no browser to download, no mailbox to wire up. The server never opens an employer's site itself.
 
@@ -64,6 +64,8 @@ Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, S
 
 You need Node.js 22.5 or newer. Add the server to your MCP client and you are done.
 
+It works best with [Instinct](https://instinct.com/), or else Claude Code. Cursor, Codex, Hermes and any other MCP client work too.
+
 **Claude Code:**
 
 ```bash
@@ -102,7 +104,7 @@ The server finds, ranks, drafts and checks. Your agent does the one thing that n
 4. If the board emails a verification code, the agent reads it with its own mail access, or asks you for it.
 5. Once the board confirms, the agent calls `record_submission`.
 
-Agents with a browser: Claude Code (Claude in Chrome, or the desktop app's browser), Cursor, the Codex app and Hermes. An agent without one gives you the apply URL and the packet, and records it once you have sent it.
+Agents with a browser: Instinct, Claude Code (Claude in Chrome, or the desktop app's browser), Cursor, the Codex app and Hermes. An agent without one gives you the apply URL and the packet, and records it once you have sent it.
 
 ## Configure
 
@@ -228,7 +230,7 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 ### Can an AI agent apply to jobs for me?
 
-Yes. Connect this server to Claude, Cursor, Codex or another MCP client and the agent finds openings, drafts each application and, once you approve the exact packet, sends it with its own browser, only to the companies in `submission.allowedCompanies` if you list any.
+Yes. Connect this server to Instinct, Claude Code, Cursor, Codex or another MCP client and the agent finds openings, drafts each application and, once you approve the exact packet, sends it with its own browser, only to the companies in `submission.allowedCompanies` if you list any.
 
 ### Is this a LinkedIn Easy Apply bot?
 
