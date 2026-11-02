@@ -200,6 +200,26 @@ export function extractVerificationLinks(body: string, tenant?: string): string[
   return rankLinks(linkCandidates(decodeMessageBody(body)), normalizeTenant(tenant)).map((link) => link.url);
 }
 
+/**
+ * Why a link someone else read out of the mailbox cannot be opened, or null
+ * when it can. An agent with its own mail access supplies the link by hand, so
+ * it is held to exactly what the inbox reader would have accepted: https on a
+ * Workday host, not a footer or asset link, and not another tenant's.
+ */
+export function suppliedLinkProblem(raw: string, tenant?: string): string | null {
+  const url = allowedUrl(raw.trim());
+  if (!url) {
+    return `only an https link on Workday's own domains (${WORKDAY_DOMAINS.join(", ")}) is opened, with no port or credentials in it`;
+  }
+  if (isFooterLink(url)) return "that is a footer, unsubscribe or image link from the email, not the verification link";
+  const expected = normalizeTenant(tenant);
+  const named = namedTenant(url);
+  if (expected && named && named !== expected) {
+    return `that link belongs to the Workday tenant "${named}", not "${expected}"; it is from another employer's email`;
+  }
+  return null;
+}
+
 export type MailMessage = { receivedAt: Date; body: string; sender?: string };
 
 /**

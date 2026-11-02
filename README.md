@@ -189,7 +189,7 @@ Greenhouse emails a one-time code before it accepts a submission and Workday ema
 2. Create an app password for that mailbox and set `AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD` in the MCP client's `env`.
 3. Pass `waitForCodeSeconds` to `submit_application`.
 
-`doctor` reports whether the mailbox is configured. Without it a gated submission stops and you write the code to `<artifacts>/<applicationId>.code` while the run waits. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
+`doctor` reports whether the mailbox is configured. Without it, `submit_application` returns `awaiting_code` at the gate and keeps the browser parked there; an agent with its own mail access (a Gmail connector, for example) reads the code and calls `provide_verification_code`, or asks you for it once. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
 
 ## Use with Claude, Cursor, Codex and other MCP clients
 

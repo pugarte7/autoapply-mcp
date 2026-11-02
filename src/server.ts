@@ -58,8 +58,9 @@ Before the first submission:
     holds the gate open. Set AUTOAPPLY_OTP_IMAP_USER and AUTOAPPLY_OTP_IMAP_PASSWORD (an app password) to a
     mailbox that receives only forwarded verification mail, created by a filter on the real address such as
     from:(greenhouse OR workday.com OR myworkday.com), and pass waitForCodeSeconds to submit_application.
-    Without it a gated submission stops and the person must write the code to <artifacts>/<applicationId>.code
-    while the run waits. See docs/CONFIGURATION.md, "Verification codes".
+    Without it, submit_application returns awaiting_code with the browser held at the gate: read the code from
+    the candidate's mail yourself if you can, else ask the person once, and call provide_verification_code.
+    See docs/CONFIGURATION.md, "Verification codes".
   - Run node dist/cli/doctor.js --probe; it says whether that mailbox is configured.
 
 Salaries in Spain come from the tech-pay-spain MCP server at https://spanishtoptechcompanies.com/mcp.

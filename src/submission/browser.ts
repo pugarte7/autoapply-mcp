@@ -80,6 +80,7 @@ import {
   type VerificationInboxConfig,
 } from "./verificationInbox.js";
 import type { SubmissionPacket } from "./packet.js";
+import { firstAnswer, type GateHandoff, type GateRequest } from "./sessions.js";
 import {
   careerBrowserChannel,
   careerProfileDir,
@@ -218,6 +219,16 @@ export type BrowserRunOptions = {
    * is absent unless deliberately switched on.
    */
   verificationInbox?: VerificationInboxConfig | null;
+  /**
+   * Asks someone outside the run for the code or link, in place of blocking on
+   * the file and the mailbox alone. Set when submit_application hands the gate
+   * to the agent: the run stays parked at the gate while the tool call
+   * returns, and whichever of this, the file and the mailbox answers first is
+   * used. With it, a refused code is asked for again rather than ending the run.
+   */
+  gateHandoff?: GateHandoff;
+  /** Receives a way to close this run's browser, so a held gate can be shut down. */
+  onBrowserOpen?: (close: () => Promise<void>) => void;
 };
 
 export type BrowserRunResult = {
@@ -828,6 +839,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
   const site = careerSiteFor(packet.applyUrl);
   if (site) return runCareerSite(chromium as unknown as PersistentLauncher, site, packet, options);
   const browser = await chromium.launch({ headless: options.headless ?? false });
+  options.onBrowserOpen?.(() => browser.close());
 
   try {
     const context = await browser.newContext({ acceptDownloads: false });
@@ -1364,69 +1376,14 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
     const confirmationShot = await capture(page, options.artifactsDir, packet.applicationId, "confirmation");
     if (!detectSubmissionConfirmation(postSubmitText, page.url())) {
       const verification = detectVerificationCodeGate(postSubmitText);
-      const code = verification
-        ? options.verificationCode ?? (await awaitVerificationCode(options, page, submitClickedAt))
-        : undefined;
-      if (verification && code) {
-        const entered = await enterVerificationCode(page, code);
-        if (entered) {
-          await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
-          const codeText = await waitForSubmissionOutcome(page, {
-            gateIsOutcome: false,
-            timeoutMs: VERIFIED_SUBMIT_TIMEOUT_MS,
-          });
-          const codeShot = await capture(page, options.artifactsDir, packet.applicationId, "confirmation");
-          if (detectSubmissionConfirmation(codeText, page.url())) {
-            return {
-              status: "submitted",
-              reason: "verification code accepted; submission confirmation detected and captured",
-              filledFields: filled,
-              unmatchedRequired: [],
-              unusedAnswers: plan.unusedAnswers.map((answer) => answer.label),
-              screenshotPath: codeShot,
-              finalUrl: page.url(),
-              confirmationText: codeText.slice(0, 600),
-              captchaDetected: false,
-            };
-          }
-          // A code that is wrong, already used or expired is worth saying
-          // plainly: the remedy is a fresh code, not another attempt at this
-          // one, and each attempt emails a new code. A gate that reports no
-          // error at all usually means the code was never sent rather than
-          // refused, so the controls it offers are recorded to tell the two
-          // apart without burning another code on a guess.
-          const codeErrors = await readValidationErrors(page);
-          const stillGated = detectVerificationCodeGate(codeText);
-          const gate = codeErrors.length ? "" : await describeVerificationGate(page);
-          return {
-            status: "aborted",
-            reason: `verification code was entered but the submission was not confirmed${
-              codeErrors.length ? `; page reported: ${codeErrors.join(" | ")}` : ""
-            }${stillGated ? " The gate is still on screen after the wait, so the code was most likely refused and a new one has been emailed." : ""}${
-              ` Code entry: ${entered}.`
-            }${gate ? ` Gate controls: ${gate}` : ""}`,
-            filledFields: filled,
-            unmatchedRequired: [],
-            unusedAnswers: plan.unusedAnswers.map((answer) => answer.label),
-            screenshotPath: codeShot,
-            finalUrl: page.url(),
-            confirmationText: "",
-            captchaDetected: false,
-          };
-        }
-      }
       if (verification) {
-        return {
-          status: "aborted",
-          reason: `${verification} Every field is filled. A code cannot be carried over from an earlier run, because clicking submit is what causes one to be sent; re-run with waitForCodeSeconds so the browser holds this session open, or in assisted mode and enter it by hand.`,
-          filledFields: filled,
-          unmatchedRequired: [],
+        return await settleCodeGate(page, packet, options, {
+          prompt: verification,
+          emailedAt: submitClickedAt,
+          filled,
           unusedAnswers: plan.unusedAnswers.map((answer) => answer.label),
           screenshotPath: confirmationShot,
-          finalUrl: page.url(),
-          confirmationText: "",
-          captchaDetected: false,
-        };
+        });
       }
       const pageErrors = await readValidationErrors(page);
       const detail = pageErrors.length ? ` page reported: ${pageErrors.join(" | ")}` : "";
@@ -1498,6 +1455,7 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
         allRepaired.push(...repairedFields.filter((label) => !allRepaired.includes(label)));
         logger.info("repairing fields the board reported empty", { round: round + 1, fields: repairedFields });
         await reassertChoices(page, choiceLog);
+        const retryClickedAt = new Date();
         if (!(await clickSubmit(page))) break;
         await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
         const retryText = await waitForSubmissionOutcome(page);
@@ -1517,22 +1475,17 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
           };
         }
         // A code gate after the repair means the form was accepted and only the
-        // code is outstanding. That needs the full gated path, which this repair
-        // deliberately does not duplicate, so say so plainly rather than guess.
+        // code is outstanding, emailed by this click rather than the first.
         const retryGate = detectVerificationCodeGate(retryText);
         if (retryGate) {
           page.off?.("response", onResponse as (payload: never) => void);
-          return {
-            status: "aborted",
-            reason: `${retryGate} The form was repaired and accepted, so re-run this application to clear the code gate.`,
-            filledFields: filled,
-            unmatchedRequired: [],
+          return await settleCodeGate(page, packet, options, {
+            prompt: retryGate,
+            emailedAt: retryClickedAt,
+            filled,
             unusedAnswers: plan.unusedAnswers.map((answer) => answer.label),
             screenshotPath: lastShot,
-            finalUrl: page.url(),
-            confirmationText: "",
-            captchaDetected: false,
-          };
+          });
         }
         roundErrors = await readValidationErrors(page);
         if (roundErrors.length === 0) {
@@ -2272,15 +2225,37 @@ export function canAwaitVerificationCode(options: {
  * as before: a link has no file hand-off, so only the mailbox can supply one.
  */
 export function workdayVerificationLinkReader(
-  options: { codeWaitMs?: number; verificationInbox?: VerificationInboxConfig | null },
+  options: { codeWaitMs?: number; verificationInbox?: VerificationInboxConfig | null; gateHandoff?: GateHandoff },
   pageUrl: string,
   fetchLink: typeof fetchVerificationLink = fetchVerificationLink,
 ): ((since: Date) => Promise<string | null>) | undefined {
   const timeoutMs = options.codeWaitMs ?? 0;
   const inbox = options.verificationInbox ?? readVerificationInboxConfig();
-  if (timeoutMs <= 0 || !inbox) return undefined;
   const tenant = workdayTenant(pageUrl);
-  return (since) => fetchLink(inbox, { since, timeoutMs, tenant });
+  const fromInbox =
+    timeoutMs > 0 && inbox
+      ? (since: Date, signal?: AbortSignal) => fetchLink(inbox, { since, timeoutMs, tenant, ...(signal ? { signal } : {}) })
+      : undefined;
+  const handoff = options.gateHandoff;
+  if (!handoff) return fromInbox;
+  // Handed off, the agent can supply the link from its own mail access while
+  // the mailbox, if there is one, keeps being read: the first link wins.
+  return async (since) => {
+    const controller = new AbortController();
+    const request: GateRequest = {
+      kind: "link",
+      emailedAt: since,
+      prompt: "Workday emailed a link to verify the candidate account before it will let the application continue.",
+      ...(tenant ? { tenant } : {}),
+    };
+    const readers: Array<Promise<string | null | undefined>> = [handoff(request, controller.signal)];
+    if (fromInbox) readers.push(fromInbox(since, controller.signal));
+    try {
+      return (await firstAnswer(readers)) ?? null;
+    } finally {
+      controller.abort();
+    }
+  };
 }
 
 /**
@@ -2300,6 +2275,7 @@ export async function awaitVerificationCode(
   options: BrowserRunOptions,
   page: AnyPage,
   emailedAt: Date,
+  control: { signal?: AbortSignal; skip?: ReadonlySet<string> } = {},
 ): Promise<string | undefined> {
   const waitMs = options.codeWaitMs ?? 0;
   const path = options.codeFilePath;
@@ -2316,7 +2292,10 @@ export async function awaitVerificationCode(
 
   try {
     const deadline = Date.now() + waitMs;
-    while (Date.now() < deadline) {
+    // A code the board already refused is no answer: the mailbox still holds
+    // it, and reading it again would only be refused again.
+    const fresh = (code: string | null | undefined) => (code && !control.skip?.has(code.trim()) ? code : "");
+    while (Date.now() < deadline && !control.signal?.aborted) {
       const code = path
         ? await readFile(path, "utf8")
             .then((text) => text.trim())
@@ -2326,7 +2305,7 @@ export async function awaitVerificationCode(
         // Consumed, so a stale code from an earlier attempt can never be picked
         // up by the next one.
         await rm(path, { force: true }).catch(() => undefined);
-        return code;
+        if (fresh(code)) return code;
       }
       // A configured mailbox is a second reader of the same round trip, not a
       // replacement: a person can still drop the code in the file at any point,
@@ -2336,13 +2315,155 @@ export async function awaitVerificationCode(
           logger.warn("verification inbox unreadable", { detail: String(error) });
           return null;
         });
-        if (emailed) return emailed;
+        if (fresh(emailed)) return emailed ?? undefined;
       }
       await page.waitForTimeout(2000);
     }
     return undefined;
   } finally {
     if (signalPath) await rm(signalPath, { force: true }).catch(() => undefined);
+  }
+}
+
+/**
+ * How many codes a handed-off gate may be given. Greenhouse lets a refused
+ * code be typed again in the same gate, but a board that keeps refusing is not
+ * going to start accepting, and every try is one more round trip to the inbox.
+ */
+const MAX_HANDOFF_CODE_ATTEMPTS = 3;
+
+type CodeGate = {
+  /** The board's own wording of the gate. */
+  prompt: string;
+  /** When the click that sent this gate's email landed. */
+  emailedAt: Date;
+  filled: BrowserRunResult["filledFields"];
+  unusedAnswers: string[];
+  screenshotPath: string;
+};
+
+/**
+ * Asks for the gate's code: the file and the mailbox alone when waiting, and
+ * the hand-off as well when the agent has it. Whichever answers first wins.
+ */
+async function obtainVerificationCode(
+  options: BrowserRunOptions,
+  page: AnyPage,
+  request: GateRequest,
+  tried: ReadonlySet<string>,
+): Promise<string | undefined> {
+  if (!options.gateHandoff) return awaitVerificationCode(options, page, request.emailedAt);
+  const controller = new AbortController();
+  const readers: Array<Promise<string | undefined>> = [options.gateHandoff(request, controller.signal)];
+  if (canAwaitVerificationCode(options)) {
+    readers.push(awaitVerificationCode(options, page, request.emailedAt, { signal: controller.signal, skip: tried }));
+  }
+  try {
+    return await firstAnswer(readers);
+  } finally {
+    controller.abort();
+  }
+}
+
+/** Whether a code box is still on screen to type a second code into. */
+async function codeBoxOnScreen(page: AnyPage): Promise<boolean> {
+  for (const selector of ['input[maxlength="1"]', ...VERIFICATION_INPUT_SELECTORS]) {
+    const box = page.locator(selector).first();
+    if ((await box.count().catch(() => 0)) > 0 && (await box.isVisible().catch(() => false))) return true;
+  }
+  return false;
+}
+
+/**
+ * Clears a code gate the board raised after the form itself was accepted.
+ *
+ * Only the gate's own control is ever clicked from here. Clicking the form's
+ * submit again would email a fresh code and void the one being entered, so a
+ * refused code is answered with another code, never with another submit.
+ */
+async function settleCodeGate(
+  page: AnyPage,
+  packet: SubmissionPacket,
+  options: BrowserRunOptions,
+  gate: CodeGate,
+): Promise<BrowserRunResult> {
+  const settled = {
+    filledFields: gate.filled,
+    unmatchedRequired: [],
+    unusedAnswers: gate.unusedAnswers,
+    confirmationText: "",
+    captchaDetected: false,
+  };
+  const tried = new Set<string>();
+  let supplied = options.verificationCode;
+  let refused: string | undefined;
+  for (let attempt = 1; ; attempt += 1) {
+    const code =
+      supplied ??
+      (await obtainVerificationCode(
+        options,
+        page,
+        { kind: "code", emailedAt: gate.emailedAt, prompt: gate.prompt, ...(refused ? { refused } : {}) },
+        tried,
+      ));
+    supplied = undefined;
+    const entered = code ? await enterVerificationCode(page, code) : null;
+    if (!code || !entered) {
+      const reason = code
+        ? `${gate.prompt} Every field is filled, but no box could be found to type the code into; finish this one by hand in assisted mode.`
+        : options.gateHandoff
+          ? `${gate.prompt} Every field is filled, but no code was supplied before the gate's deadline, so the browser was closed and that code is void. Submit again for a fresh one and pass it to provide_verification_code as soon as it arrives.`
+          : `${gate.prompt} Every field is filled. A code cannot be carried over from an earlier run, because clicking submit is what causes one to be sent; re-run with waitForCodeSeconds so the browser holds this session open, or in assisted mode and enter it by hand.`;
+      return { ...settled, status: "aborted", reason, screenshotPath: gate.screenshotPath, finalUrl: page.url() };
+    }
+    tried.add(code.trim());
+
+    await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => undefined);
+    const codeText = await waitForSubmissionOutcome(page, {
+      gateIsOutcome: false,
+      timeoutMs: VERIFIED_SUBMIT_TIMEOUT_MS,
+    });
+    const codeShot = await capture(page, options.artifactsDir, packet.applicationId, "confirmation");
+    if (detectSubmissionConfirmation(codeText, page.url())) {
+      return {
+        ...settled,
+        status: "submitted",
+        reason: "verification code accepted; submission confirmation detected and captured",
+        screenshotPath: codeShot,
+        finalUrl: page.url(),
+        confirmationText: codeText.slice(0, 600),
+      };
+    }
+    // A code that is wrong, already used or expired is worth saying
+    // plainly: the remedy is a fresh code, not another attempt at this
+    // one, and each attempt emails a new code. A gate that reports no
+    // error at all usually means the code was never sent rather than
+    // refused, so the controls it offers are recorded to tell the two
+    // apart without burning another code on a guess.
+    const codeErrors = await readValidationErrors(page);
+    const stillGated = detectVerificationCodeGate(codeText);
+    // A gate still asking, with its box still there, takes another code. Only
+    // the hand-off retries: a mailbox read on its own would just find the
+    // refused code again.
+    if (options.gateHandoff && stillGated && attempt < MAX_HANDOFF_CODE_ATTEMPTS && (await codeBoxOnScreen(page))) {
+      refused = codeErrors.length
+        ? `the board refused code attempt ${attempt}: ${codeErrors.join(" | ")}`
+        : `the board did not accept code attempt ${attempt} and is still asking for one`;
+      logger.info("verification code refused; asking again", { applicationId: packet.applicationId, attempt });
+      continue;
+    }
+    const controls = codeErrors.length ? "" : await describeVerificationGate(page);
+    return {
+      ...settled,
+      status: "aborted",
+      reason: `verification code was entered but the submission was not confirmed${
+        codeErrors.length ? `; page reported: ${codeErrors.join(" | ")}` : ""
+      }${stillGated ? " The gate is still on screen after the wait, so the code was most likely refused and a new one has been emailed." : ""}${
+        ` Code entry: ${entered}.`
+      }${controls ? ` Gate controls: ${controls}` : ""}`,
+      screenshotPath: codeShot,
+      finalUrl: page.url(),
+    };
   }
 }
 
