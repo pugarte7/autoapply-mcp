@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { join } from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   countSubmittedSince,
@@ -8,18 +7,15 @@ import {
   saveApplication,
 } from "../db/repositories/applications.js";
 import { appendEvent } from "../db/repositories/events.js";
-import { applicationCountsByCompany, getEvaluation } from "../db/repositories/jobs.js";
+import { applicationCountsByCompany } from "../db/repositories/jobs.js";
 import { applicationQuestion, askPerson, packetFor, recordApplicationDecision } from "../submission/approvals.js";
 import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
 import { renderPacketPreview } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
-import { personalResolverFor } from "../submission/personalResolver.js";
-import { experienceResolverFor } from "../submission/experienceResolver.js";
-import { narrativeResolverFor } from "../submission/narrativeResolver.js";
-import { isWorkdayUrl } from "../submission/workdayFlow.js";
 import { nowIso } from "../util/hash.js";
+import { abortedNextStep, fieldsToAnswer, formRunOptions, waitForCodeSecondsInput, type FieldToAnswer } from "./formRun.js";
 import { handler, ok, okText } from "./helpers.js";
 
 /**
@@ -91,15 +87,7 @@ export function registerSubmissionTools(server: McpServer): void {
           .describe(
             "The one-time code the board emailed after a previous attempt hit its verification gate. Each attempt emails a new code, so use the most recent one.",
           ),
-        waitForCodeSeconds: z
-          .number()
-          .int()
-          .min(0)
-          .max(1800)
-          .optional()
-          .describe(
-            "Hold the browser at a verification gate for this long while waiting for the code to be written to <artifacts>/<applicationId>.code. A code cannot be carried between runs, so this is the only way an automated submission clears the gate. With a verification inbox configured, it also bounds the wait for the link Workday emails to verify a candidate account.",
-          ),
+        waitForCodeSeconds: waitForCodeSecondsInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
@@ -139,29 +127,18 @@ export function registerSubmissionTools(server: McpServer): void {
         );
       }
 
-      const result = await runApplicationForm(packet, {
-        submit: mode === "auto",
-        headless: mode === "assisted" ? false : args.headless ?? true,
-        artifactsDir: workspace.paths.artifacts,
-        policy: workspace.campaign.submission,
-        candidateCountry: workspace.profile.identity.location.country,
-        answerBank: workspace.profile.answers,
-        personalResolver: personalResolverFor(workspace.profile),
-        experienceResolver: experienceResolverFor(workspace.profile),
-        narrativeResolver: narrativeResolverFor(job, getEvaluation(workspace.db, job.id), workspace.profile, workspace.campaign),
-        accountEmail: workspace.profile.identity.email,
-        relocationTargets: workspace.profile.preferences.relocationTargets,
-        // Registering on an employer's tenant is a bigger step than filling a
-        // public form, so it is only done when a person is watching the window.
-        // Workday is the exception: it has no anonymous apply path at all, so
-        // refusing to register there is refusing to apply.
-        allowAccountCreation: mode === "assisted" || isWorkdayUrl(job.applyUrl),
-        keepOpenMs: mode === "assisted" ? (args.keepOpenSeconds ?? 240) * 1000 : 0,
-        verificationCode: args.verificationCode,
-        codeWaitMs: (args.waitForCodeSeconds ?? 0) * 1000,
-        codeFilePath: join(workspace.paths.artifacts, `${application.id}.code`),
-      });
+      const result = await runApplicationForm(
+        packet,
+        formRunOptions(workspace, job, application.id, {
+          mode,
+          headless: args.headless,
+          keepOpenMs: mode === "assisted" ? (args.keepOpenSeconds ?? 240) * 1000 : 0,
+          verificationCode: args.verificationCode,
+          waitForCodeSeconds: args.waitForCodeSeconds,
+        }),
+      );
 
+      let unanswered: FieldToAnswer[] = [];
       if (result.status === "submitted") {
         saveApplication(workspace.db, {
           ...application,
@@ -178,15 +155,13 @@ export function registerSubmissionTools(server: McpServer): void {
           company: job.companyName,
         });
       } else if (result.status === "aborted") {
+        const answers = mergeDiscoveredQuestions(application.answers, result.unmatchedRequired, workspace.profile.answers);
+        unanswered = fieldsToAnswer(answers);
         saveApplication(workspace.db, {
           ...application,
           packetHash: currentHash,
           status: "needs_human",
-          answers: mergeDiscoveredQuestions(
-            application.answers,
-            result.unmatchedRequired,
-            workspace.profile.answers,
-          ),
+          answers,
           notes: `${application.notes}\n[${nowIso()}] aborted: ${result.reason}`.trim(),
           artifactPath: result.screenshotPath,
         });
@@ -199,12 +174,13 @@ export function registerSubmissionTools(server: McpServer): void {
         applicationId: application.id,
         mode,
         result,
+        fieldsToAnswer: result.status === "aborted" ? unanswered : undefined,
         nextStep:
           result.status === "submitted"
             ? "Submitted. Track the outcome with record_outcome."
             : result.status === "prepared"
-              ? "Form filled. Review the open window or the screenshot, submit, then call record_submission."
-              : "Blocked. Resolve the reason above; this application needs a human.",
+              ? "Form filled in the open window for the person to check and send. Once they have, call record_submission."
+              : abortedNextStep(result, unanswered, "run submit_application again"),
       });
     }),
   );

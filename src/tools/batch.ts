@@ -22,19 +22,17 @@ import {
   type BatchItem,
 } from "../db/repositories/batches.js";
 import { appendEvent } from "../db/repositories/events.js";
-import { applicationCountsByCompany, getEvaluation, getJob, listQueue } from "../db/repositories/jobs.js";
-import { prepareApplicationFor } from "../drafting/prepare.js";
+import { applicationCountsByCompany, getJob, listQueue } from "../db/repositories/jobs.js";
+import { prepareApplicationFor, type PreparedApplication } from "../drafting/prepare.js";
 import { autoFillableFields } from "../drafting/personal.js";
+import { answerOwner, type AnswerOwner } from "../drafting/answerOwner.js";
 import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
 import { newId, nowIso } from "../util/hash.js";
 import { logger } from "../util/logger.js";
-import { personalResolverFor } from "../submission/personalResolver.js";
-import { experienceResolverFor } from "../submission/experienceResolver.js";
-import { narrativeResolverFor } from "../submission/narrativeResolver.js";
-import { isWorkdayUrl } from "../submission/workdayFlow.js";
+import { abortedNextStep, fieldsToAnswer, formRunOptions, waitForCodeSecondsInput, type FieldToAnswer } from "./formRun.js";
 import { handler, ok } from "./helpers.js";
 import { askPerson, batchQuestion, checkBatchManifest, packetFor, recordBatchApproval } from "../submission/approvals.js";
 
@@ -72,6 +70,46 @@ type FilterArgs = {
   limit?: number;
 };
 
+
+/**
+ * The batch's own next step. Blocked applications used to be described as
+ * needing "a human decision", which sent the agent to the person with
+ * questions it could answer itself; most are essays and profile facts.
+ */
+function prepareBatchNextStep(
+  ready: number,
+  questions: ReadonlyArray<{ who: AnswerOwner }>,
+  manifestHash: string,
+): string {
+  const agent = questions.filter((question) => question.who === "agent").length;
+  const person = questions.length - agent;
+  const unblock = [
+    agent > 0
+      ? `answer the ${agent} recurring question${agent === 1 ? "" : "s"} marked who=agent yourself from the profile and match report with set_application_content`
+      : "",
+    person > 0
+      ? `ask the person the ${person} marked who=person in one grouped message, and store each standing answer so it is not asked again`
+      : "",
+  ].filter((step) => step.length > 0);
+  const approve = `call approve_batch with manifestHash ${manifestHash}, which asks the person once for the whole set`;
+  if (unblock.length === 0) {
+    return ready === 0 ? "Nothing is ready yet: see preview_batch for why." : `Check preview_batch, then ${approve}.`;
+  }
+  const unblockText = `To unblock the rest, ${unblock.join(", and ")}.`;
+  return ready === 0
+    ? `Nothing is ready yet. ${unblockText} Then run prepare_batch again.`
+    : `${unblockText} For the ${ready} ready now, ${approve}.`;
+}
+
+function submitBatchNextStep(remaining: number, stopped: number): string {
+  const retry =
+    stopped > 0
+      ? ` ${stopped} stopped short of submitting: follow each one's nextStep, answering its who=agent fieldsToAnswer yourself, and resubmit it with submit_application.`
+      : "";
+  return remaining > 0
+    ? `Approved applications remain. Call submit_batch again when their submission guards allow it.${retry}`
+    : `Batch run finished. Track responses with record_outcome.${retry}`;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -116,7 +154,7 @@ export function registerBatchTools(server: McpServer): void {
       const batchId = newId("batch");
       const items: BatchItem[] = [];
       const failures: Array<{ jobId: string; error: string }> = [];
-      const preparedRecords: Array<{ outstanding: Array<{ label: string; category: string; suggested: string; guidance: string }> }> = [];
+      const preparedRecords: Array<Pick<PreparedApplication, "outstanding">> = [];
 
       for (const entry of queue) {
         try {
@@ -180,12 +218,23 @@ export function registerBatchTools(server: McpServer): void {
 
       // The same question text recurs across employers, so listing it once with
       // its suggestion turns many blocked applications into one decision.
-      const questionCounts = new Map<string, { label: string; category: string; suggested: string; guidance: string; count: number }>();
+      const questionCounts = new Map<
+        string,
+        { label: string; category: string; who: AnswerOwner; suggested: string; guidance: string; count: number }
+      >();
       for (const prepared of preparedRecords) {
         for (const question of prepared.outstanding) {
           const existing = questionCounts.get(question.label);
           if (existing) existing.count += 1;
-          else questionCounts.set(question.label, { ...question, count: 1 });
+          else
+            questionCounts.set(question.label, {
+              label: question.label,
+              category: question.category,
+              who: question.who,
+              suggested: question.suggested,
+              guidance: question.guidance,
+              count: 1,
+            });
         }
       }
       const recurringQuestions = [...questionCounts.values()]
@@ -204,10 +253,7 @@ export function registerBatchTools(server: McpServer): void {
         recurringQuestions,
         autoFilledPersonalFields: autoFillableFields(workspace.profile),
         companies: [...new Set(queue.map((entry) => entry.job.companyName))],
-        nextStep:
-          ready.length === 0
-            ? "Every application needs a human decision first. Use preview_batch to see the grouped questions, add answers to profile.answers or profile.personal with autoFill enabled, then run prepare_batch again."
-            : `Review with preview_batch, then approve_batch with manifestHash ${manifestHash}.`,
+        nextStep: prepareBatchNextStep(ready.length, recurringQuestions, manifestHash),
       });
     }),
   );
@@ -241,6 +287,7 @@ export function registerBatchTools(server: McpServer): void {
             key: answer.questionKey,
             label: answer.label,
             category: answer.category,
+            who: answerOwner(answer.label, answer.category),
             suggested: answer.answer,
             guidance: answer.guidance,
           }));
@@ -269,7 +316,7 @@ export function registerBatchTools(server: McpServer): void {
         manifestHash: currentManifest,
         manifestStale: currentManifest !== batch.manifestHash,
         applications: args.includeReady === false ? detail.filter((item) => item.state !== "ready") : detail,
-        note: "approve_batch authorizes every 'ready' application in this manifest. Items marked needs_human are excluded.",
+        note: "approve_batch authorizes every 'ready' application in this manifest. Items marked needs_human are excluded until their outstanding questions are answered: write the ones marked who=agent yourself with set_application_content, and ask the person the who=person ones in one grouped message.",
       });
     }),
   );
@@ -317,10 +364,17 @@ export function registerBatchTools(server: McpServer): void {
         mode: z.enum(["manual", "assisted", "auto"]).default("manual"),
         maxSubmissions: z.number().int().positive().max(200).optional(),
         headless: z.boolean().optional(),
+        waitForCodeSeconds: waitForCodeSecondsInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    handler(async (args: { batchId: string; mode?: "manual" | "assisted" | "auto"; maxSubmissions?: number; headless?: boolean }) => {
+    handler(async (args: {
+      batchId: string;
+      mode?: "manual" | "assisted" | "auto";
+      maxSubmissions?: number;
+      headless?: boolean;
+      waitForCodeSeconds?: number;
+    }) => {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
       if (!batch) throw new AppError("batch_not_found", `no batch ${args.batchId}`);
@@ -339,7 +393,14 @@ export function registerBatchTools(server: McpServer): void {
 
       setBatchStatus(workspace.db, batch.id, "submitting");
 
-      const results: Array<{ applicationId: string; company: string; outcome: string; detail: string }> = [];
+      const results: Array<{
+        applicationId: string;
+        company: string;
+        outcome: string;
+        detail: string;
+        fieldsToAnswer?: FieldToAnswer[];
+        nextStep?: string;
+      }> = [];
       const manualPackets: Array<{ applicationId: string; company: string; title: string; applyUrl: string }> = [];
       let submitted = 0;
 
@@ -388,21 +449,15 @@ export function registerBatchTools(server: McpServer): void {
         }
 
         try {
-          const run = await runApplicationForm(packet, {
-            submit: mode === "auto",
-            headless: mode === "assisted" ? false : args.headless ?? true,
-            artifactsDir: workspace.paths.artifacts,
-            policy,
-            candidateCountry: workspace.profile.identity.location.country,
-            answerBank: workspace.profile.answers,
-            personalResolver: personalResolverFor(workspace.profile),
-            experienceResolver: experienceResolverFor(workspace.profile),
-        narrativeResolver: narrativeResolverFor(job, getEvaluation(workspace.db, job.id), workspace.profile, workspace.campaign),
-            accountEmail: workspace.profile.identity.email,
-            // Workday has no anonymous apply path, so refusing to register a
-            // candidate account there is refusing to apply at all.
-            allowAccountCreation: mode === "assisted" || isWorkdayUrl(job.applyUrl),
-          });
+          const run = await runApplicationForm(
+            packet,
+            formRunOptions(workspace, job, application.id, {
+              mode,
+              headless: args.headless,
+              keepOpenMs: 0,
+              waitForCodeSeconds: args.waitForCodeSeconds,
+            }),
+          );
 
           if (run.status === "submitted") {
             saveApplication(workspace.db, {
@@ -419,20 +474,26 @@ export function registerBatchTools(server: McpServer): void {
             submitted += 1;
             results.push({ applicationId: application.id, company: job.companyName, outcome: "submitted", detail: run.finalUrl });
           } else {
+            const answers = mergeDiscoveredQuestions(application.answers, run.unmatchedRequired, workspace.profile.answers);
+            const fields = fieldsToAnswer(answers);
             saveApplication(workspace.db, {
               ...application,
               packetHash: currentHash,
               status: "needs_human",
-              answers: mergeDiscoveredQuestions(
-                application.answers,
-                run.unmatchedRequired,
-                workspace.profile.answers,
-              ),
+              answers,
               notes: `${application.notes}\n[${nowIso()}] ${run.reason}`.trim(),
               artifactPath: run.screenshotPath,
             });
             setBatchItemState(workspace.db, batch.id, item.applicationId, "needs_human", run.reason);
-            results.push({ applicationId: application.id, company: job.companyName, outcome: run.status, detail: run.reason });
+            results.push({
+              applicationId: application.id,
+              company: job.companyName,
+              outcome: run.status,
+              detail: run.reason,
+              ...(run.status === "aborted"
+                ? { fieldsToAnswer: fields, nextStep: abortedNextStep(run, fields, "submit it with submit_application") }
+                : {}),
+            });
           }
         } catch (error) {
           const message = toErrorMessage(error);
@@ -459,9 +520,7 @@ export function registerBatchTools(server: McpServer): void {
         nextStep:
           mode === "manual"
             ? "Open each apply URL, submit it, then call record_submission for that application id."
-            : remaining > 0
-              ? "Approved applications remain. Call submit_batch again when their submission guards allow it."
-              : "Batch complete. Track responses with record_outcome.",
+            : submitBatchNextStep(remaining, results.filter((result) => result.fieldsToAnswer !== undefined).length),
       });
     }),
   );
