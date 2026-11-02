@@ -114,18 +114,15 @@ describe("resolveExperience", () => {
     "Are you currently employed by us in any capacity? If so, please list current role.",
     "Are you currently employed by a federal contractor?",
     "Are you currently employed by any other company in your current role?",
-    "Have you ever been employed by Maven Clinic in any role?",
   ])("leaves %s for a person rather than guessing who is meant", (label) => {
     expect(resolveExperience(label, profile)).toBeNull();
   });
 
   // "Current or former" also asks about past jobs, and a willingness question
   // is not about employment at all. Answering either from the current job
-  // alone said "No" for the candidate, so both still go to a person.
+  // alone said "No" for the candidate. Past employment is now read from the
+  // whole experience list (see below); willingness still goes to a person.
   it.each([
-    "Are you a current or former employee of Stripe?",
-    "Are you currently or have you ever been employed by Stripe?",
-    "Were you previously employed by Stripe?",
     "Are you open to working for Stripe on a contract basis?",
     "Are you willing to work for Acme in our SF office?",
     "Are you interested in working for Acme's security team?",

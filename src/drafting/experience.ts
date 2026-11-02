@@ -1,6 +1,7 @@
 import type { Profile } from "../domain/profile.js";
 import { normalizeLabel } from "../submission/formFields.js";
 import { SKILLS_CITATION, profileSkillsAnswer } from "./skillsAnswer.js";
+import { resolveSkillYears } from "./skillYears.js";
 
 type Experience = Profile["experience"][number];
 
@@ -426,13 +427,47 @@ function answerYearsThreshold(label: string, profile: Profile): string {
 }
 
 /**
- * Returns the employment-history value for a live field label, or null when the
- * profile says nothing about it.
+ * "Have you previously worked for Acme?" and "Have you ever been employed by
+ * this company?" ask about the whole history, not the current job, and the
+ * experience list is that history: the employers the CV names. When the person
+ * has not recorded `personal.previousEmployment`, the answer is read from it.
+ *
+ * Anything that reaches past the candidate's own employment by the named
+ * company is left alone. "Google or any of its subsidiaries" would need a list
+ * of subsidiaries; "has a relative worked here" is not about the candidate at
+ * all; and a described employer ("a government agency") names nobody.
  */
-export function resolveExperience(label: string, profile: Profile): ExperienceResolution | null {
+const PAST_EMPLOYMENT =
+  /\b(?:previously|ever|before|formerly|in the past|prior)\b[^?]*\b(?:worked|employed|been an? (?:employee|contractor|intern))\b|\b(?:worked|employed)\b[^?]*\b(?:previously|before|in the past)\b|\bformer (?:employee|contractor|intern)\b|\bcurrent or former (?:employee|contractor)\b/;
+const BEYOND_THE_CANDIDATE =
+  /\b(?:subsidiar\w*|affiliat\w*|parent|partner|client|customer|vendor|agency|agencies|competitor|family|relative|spouse|friend|anyone|someone|government)\b/;
+/** "this company", "us", "our company": the employer being applied to. */
+const HIRING_EMPLOYER = /^(?:this|our|us|the)\b(?:\s+(?:company|organisation|organization|employer|firm|team))?(?:\s|$)/;
+
+function resolvePastEmployment(label: string, profile: Profile, employer: string | undefined): ExperienceResolution | null {
+  if (profile.personal.previousEmployment.value.trim().length > 0) return null;
+  if (profile.experience.length === 0) return null;
+  if (!PAST_EMPLOYMENT.test(label) || BEYOND_THE_CANDIDATE.test(label) || WORK_ELIGIBILITY_TEXT.test(label)) return null;
+  const clause = EMPLOYER_CLAUSE.exec(label)?.[1]?.trim() ?? "";
+  const named = namedEmployer(label) ?? (HIRING_EMPLOYER.test(clause) && employer ? normalizeLabel(employer) : null);
+  if (!named) return null;
+  const worked = profile.experience.some((job) => sameEmployer(named, job.company));
+  return { answer: worked ? "Yes" : "No", citation: "experience[].company", category: "employment-history", authorized: true };
+}
+
+/**
+ * Returns the employment-history value for a live field label, or null when the
+ * profile says nothing about it. `employer` is the company being applied to,
+ * for questions that call it "this company".
+ */
+export function resolveExperience(label: string, profile: Profile, employer?: string): ExperienceResolution | null {
+  const skillYears = resolveSkillYears(label, profile);
+  if (skillYears) return { ...skillYears, category: "skills", authorized: true };
+  const normalized = normalizeLabel(label);
+  const past = resolvePastEmployment(normalized, profile, employer);
+  if (past) return past;
   const entry = mostRecent(profile);
   if (!entry) return null;
-  const normalized = normalizeLabel(label);
   for (const resolver of RESOLVERS) {
     if (!resolver.test(normalized)) continue;
     const answer = resolver.resolve(entry, profile, normalized);

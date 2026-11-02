@@ -7,6 +7,7 @@ import { resolveNarrative, type NarrativeContext } from "./narrative.js";
 import { selectBestOption } from "./options.js";
 import { resolvePersonal } from "./personal.js";
 import { resolveExperience } from "./experience.js";
+import { resolveLanguage } from "./languages.js";
 import {
   CURRENT_RESIDENCE_QUESTION as SHARED_RESIDENCE_QUESTION,
   WORK_AUTHORITY_TEXT as SHARED_WORK_AUTHORITY_TEXT,
@@ -818,7 +819,7 @@ function answerOne(
   // Employment history: factual resume data, already used at fill time but
   // never consulted during drafting, so "What is your current or previous job
   // title?" blocked applications that the server could answer from the profile.
-  const experience = resolveExperience(asked.label, profile);
+  const experience = resolveExperience(asked.label, profile, context?.company);
   if (experience) {
     return {
       questionKey: question.key,
@@ -828,6 +829,20 @@ function answerOne(
       citation: experience.citation,
       requiresHuman: !experience.authorized,
       category: experience.category,
+      guidance: "",
+    };
+  }
+
+  const language = resolveLanguage(asked.label, profile, question.options);
+  if (language) {
+    return {
+      questionKey: question.key,
+      label: question.label,
+      answer: language.answer,
+      source: "profile",
+      citation: language.citation,
+      requiresHuman: false,
+      category: "language",
       guidance: "",
     };
   }
