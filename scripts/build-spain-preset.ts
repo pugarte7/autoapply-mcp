@@ -5,6 +5,7 @@
  *   npm run build && node scripts/build-spain-preset.ts
  *   node scripts/build-spain-preset.ts --limit 20 --out /tmp/spain.json
  *   node scripts/build-spain-preset.ts --resume   # continue an interrupted run
+ *   node scripts/build-spain-preset.ts --resume --redo "BBVA,Airbus" --reuse-guesses
  *
  * The rules live in src/presets/spain.ts; this file only wires them to the
  * network through the server's own resolver, adapters and polite HTTP client,
@@ -45,6 +46,10 @@ const { values } = parseArgs({
     resume: { type: "boolean", default: false },
     // With --resume: probe these companies again instead of keeping their earlier result.
     redo: { type: "string" },
+    // The same, one name per line, for names with commas in them ("Aetion, a Datavant Company").
+    "redo-file": { type: "string" },
+    // With --redo: list the boards the earlier run's guesses found instead of probing every slug again.
+    "reuse-guesses": { type: "boolean", default: false },
     "no-websites": { type: "boolean", default: false },
   },
 });
@@ -72,13 +77,35 @@ if (values.limit) companies = companies.slice(0, Number.parseInt(values.limit, 1
 
 type Report = { dataAsOf: string; companies: Awaited<ReturnType<typeof spain.probeCompany>>[] };
 const previous: Report | null = values.resume && existsSync(values.report) ? JSON.parse(readFileSync(values.report, "utf8")) : null;
-const redo = new Set((values.redo ?? "").split(",").map((name) => name.trim().toLowerCase()).filter(Boolean));
+const redoNames = [
+  ...(values.redo ?? "").split(","),
+  ...(values["redo-file"] ? readFileSync(values["redo-file"], "utf8").split("\n") : []),
+];
+const redo = new Set(redoNames.map((name) => name.trim().toLowerCase()).filter(Boolean));
 const reports = (previous?.companies ?? []).filter((report) => !redo.has(report.name.toLowerCase()));
 const done = new Set(reports.map((report) => report.name));
 
+// Slugs an earlier version guessed from a website that was itself an ATS link.
+const ATS_NAMES = new Set(["greenhouse", "lever", "ashbyhq", "smartrecruiters", "workable", "recruitee", "myworkdayjobs"]);
+const earlierGuesses = new Map(
+  (previous?.companies ?? []).map((report) => [
+    report.name,
+    report.candidates
+      .filter((candidate) => candidate.source === "guess" && !ATS_NAMES.has(candidate.board.toLowerCase()))
+      .map((candidate) => ({
+        ats: candidate.ats,
+        board: candidate.board,
+        url: candidate.region === "eu" ? "https://api.eu.lever.co/v0/postings/" : "",
+      })),
+  ]),
+);
+
 const capturedAt = nowIso();
 const deps = {
-  resolve: (name: string, extra: readonly string[]) => resolveBoards(name, extra),
+  resolve: async (name: string, extra: readonly string[]) =>
+    values["reuse-guesses"] && redo.has(name.toLowerCase()) && earlierGuesses.has(name)
+      ? (earlierGuesses.get(name) ?? [])
+      : resolveBoards(name, extra),
   listJobs: (company: Company) => adapterFor(company.ats).listJobs(company, capturedAt),
   ...(values["no-websites"] ? {} : { fetchPage }),
 };

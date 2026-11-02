@@ -67,7 +67,14 @@ describe("reading the salary site's aggregates", () => {
     min_ranked: 3,
     companies: [
       { name: "Ejemplo Labs", web: "https://www.ejemplolabs.example", levels: "ejemplo-labs", linkedin: null, cities: ["Madrid"] },
-      { name: "Otra", web: null, levels: "otra", linkedin: "https://www.linkedin.com/company/otra", cities: [] },
+      {
+        name: "Otra",
+        url: "https://www.levels.fyi/companies/otra/salaries",
+        web: null,
+        levels: "otra",
+        linkedin: "https://www.linkedin.com/company/otra",
+        cities: [],
+      },
     ],
   };
   const tables = {
@@ -82,6 +89,7 @@ describe("reading the salary site's aggregates", () => {
     expect(snapshot.rules).toEqual(rules);
     expect(snapshot.companies[0]).toMatchObject({ name: "Ejemplo Labs", levelsSlug: "ejemplo-labs", engineerMedian: 72000, engineerCount: 12 });
     // Only the "|" cell ranks a company; a narrower band is not its median.
+    // And its Levels.fyi page is not its website: guessed from, it made "levels" a slug.
     expect(snapshot.companies[1]).toMatchObject({ name: "Otra", website: null, engineerMedian: null, engineerCount: 0 });
   });
 
@@ -106,6 +114,11 @@ describe("reading boards off links", () => {
       board: "ejemplo/wd3/Ejemplo_Careers",
       region: "global",
     });
+    expect(boardFromUrl("https://careers.smartrecruiters.com/Ejemplo")).toEqual({ ats: "smartrecruiters", board: "Ejemplo", region: "global" });
+    expect(boardFromUrl("https://apply.workable.com/ejemplo/")).toEqual({ ats: "workable", board: "ejemplo", region: "global" });
+    expect(boardFromUrl("https://ejemplo.recruitee.com/o/backend")).toEqual({ ats: "recruitee", board: "ejemplo", region: "global" });
+    expect(boardFromUrl("https://apply.workable.com/j/ABC123")).toBeNull();
+    expect(boardFromUrl("https://www.recruitee.com/")).toBeNull();
     // A bare language is a locale too; read as the site, it named a board that does not exist.
     expect(boardFromUrl("https://ejemplo.wd3.myworkdayjobs.com/es/Externo")?.board).toBe("ejemplo/wd3/Externo");
   });
@@ -119,10 +132,12 @@ describe("reading boards off links", () => {
   it("collects every board a page links to, once", () => {
     const html = `<a href="https://jobs.ashbyhq.com/ejemplo?utm=1">Jobs</a>
       <script src="https://boards.greenhouse.io/embed/job_board/js?for=ejemplo&amp;b=x"></script>
-      <a href="https://jobs.ashbyhq.com/ejemplo/123">Role</a>`;
+      <a href="https://jobs.ashbyhq.com/ejemplo/123">Role</a>
+      <a href='https://ejemplo.recruitee.com'>Vacantes</a>`;
     expect(boardsLinkedFrom(html)).toEqual([
       { ats: "ashby", board: "ejemplo", region: "global" },
       { ats: "greenhouse", board: "ejemplo", region: "global" },
+      { ats: "recruitee", board: "ejemplo", region: "global" },
     ]);
   });
 
@@ -301,7 +316,7 @@ describe("the shipped Spain preset", () => {
 
   it("points only at boards the source layer fetches, tagged for Spain", () => {
     for (const company of companies) {
-      expect(["greenhouse", "lever", "ashby", "workday"]).toContain(company.ats);
+      expect(["greenhouse", "lever", "ashby", "workday", "smartrecruiters", "workable", "recruitee"]).toContain(company.ats);
       expect(company.board.startsWith("http")).toBe(false);
       expect(company.tags).toContain("spain");
       if (company.region === "eu") expect(company.ats).toBe("lever");
@@ -326,6 +341,8 @@ describe("the Spain campaign example", () => {
     expect(campaign.submission.allowedCompanies).toEqual([]);
     // Lever's EU boards apply on their own host, which jobs.lever.co does not cover.
     expect(campaign.submission.allowedAtsDomains).toContain("jobs.eu.lever.co");
+    // A fifth of the Spain boards are Workday tenants.
+    expect(campaign.submission.allowedAtsDomains).toContain("myworkdayjobs.com");
     expect(campaign.tracks.reduce((sum, track) => sum + track.allocation, 0)).toBeCloseTo(1);
   });
 

@@ -12,9 +12,12 @@ store API keys in configuration JSON.
 Scaffold them from the shipped examples:
 
 ```bash
-npm run init                      # writes to ~/.autoapply
+npm run init                      # writes to ~/.autoapply, US and Canada preset
+npm run init -- --preset spain    # Spain: campaign in EUR and the Spain company list
 AUTOAPPLY_HOME=/path npm run init # or anywhere else
 ```
+
+`--preset` picks the campaign and the company list together, because each only makes sense with the other. `us-canada` (the default, `examples/campaign.example.json` with `presets/ai-security-us-canada.json`) and `spain` (`examples/campaign.spain.example.json` with `presets/spain.json`, see [Spain](#spain)) are the two. There is no guessing from the profile: `init` runs before the profile is filled in, so the default stays explicit.
 
 `init` never overwrites an existing file, so re-running it after adding one config fills in only what is missing.
 
@@ -257,7 +260,26 @@ connections so they load the new schema. Once the new code is running,
 
 `name` is an identity, not a label. Boards are matched on it case-insensitively, and `submission.maxPerCompany` is keyed by it, so two spellings of one employer become two boards with two separate ceilings.
 
-Start from `presets/ai-security-us-canada.json`, which contains 135 boards verified live against the ATS APIs. `npm run init` copies it for you. It is a starting point, not a fixed list: this file is your own selection, so add and remove boards freely. Boards found during a campaign land in your copy, not in the repository, so contribute anything worth sharing back to the preset.
+Start from `presets/ai-security-us-canada.json`, which contains 135 boards verified live against the ATS APIs, or from `presets/spain.json` for jobs in Spain (see [Spain](#spain)). `npm run init` copies the one its `--preset` names. It is a starting point, not a fixed list: this file is your own selection, so add and remove boards freely. Boards found during a campaign land in your copy, not in the repository, so contribute anything worth sharing back to the preset.
+
+## Spain
+
+`npm run init -- --preset spain` seeds a campaign for software jobs in Spain and the companies that pay engineers there, taken from [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com). Both files are a starting point to edit, like the US and Canada ones.
+
+**Companies.** `presets/spain.json` holds 89 of the employers the salary site lists (only those it could verify, by a website or a LinkedIn page) whose board publishes at least one posting in Spain or remote from Spain or Europe, by the same location classifier the gates use. Most are Greenhouse, Lever or Ashby. The rest are Workday, SmartRecruiters, Workable and Recruitee boards the company's own website links to, since those cannot be guessed; the last three support discovery and manual packets only. Workday entries carry `query: "Spain"`, because those tenants publish thousands of roles worldwide and each one costs a detail request. `tier` follows the site's ranking: `A` when the company's median software-engineer base reaches the site's 60,000 EUR listing bar over at least three salaries, `B` when it reaches the bar on fewer or sits between 45,000 EUR (the floor the site counts companies from) and the bar, `C` below that or with no engineer salaries. Every entry is tagged `spain` plus up to three of its Spanish cities, and Lever boards hosted in the EU carry `region: "eu"`. Boards found by guessing a slug are kept only when the postings name the company, since a slug like `seat` can belong to anyone. Many Spanish employers hire through their own careers site, a Workday tenant their homepage does not link, or an ATS this server does not fetch, so 266 of the 355 are not in the file; add them with `resolve_company_board` and `add_company_board`.
+
+Rebuild it with `npm run preset:spain`. The script reads the site's published aggregates from its repository (never the individual salaries), reads each company's website and one careers page for board links, then probes Greenhouse, Lever (global and EU) and Ashby with the server's own resolver, adapters and per-host throttle. A board linked from a page that links more than two is treated as a guess. A full run of the 355 listed companies takes about an hour and a half; `--resume` continues an interrupted one, `--redo` with `--reuse-guesses` probes named companies again without re-guessing their slugs, and `--limit`/`--only` restrict it.
+
+**Campaign.** `examples/campaign.spain.example.json`:
+
+- `locations.allow` is `["spain", "remote-spain", "remote-europe"]`: an office in Spain, or remote from Spain or anywhere in Europe. `europe` (an office or a remote role tied to another European country) is left out; add it if you would move.
+- `compensation` is in EUR with `floors` of 60,000 for `ES` and for `*` (remote roles whose country is unknown). That is the salary site's listing bar, and just under the median base of every software engineer it has in Spain (62,000 EUR over 3,289 salaries; by experience 48,000 at two to four years, 61,000 at five to seven, 71,000 at eight to eleven). Only a published range whose top is under the floor rejects a posting; most Spanish postings publish none and are kept. Lower it toward 50,000 if you are earlier in your career, raise it if you are senior. `fx` rates are static, one unit in EUR.
+- Seven tracks: backend and general software, frontend, full-stack, data, ML and AI, DevOps/platform/SRE, mobile. Title phrases are in English and Spanish (`ingeniero de software`, `desarrolladora frontend`, `cientifico de datos`). Write them without accents: titles are compared after accents are stripped, so a phrase written `ingeniería` never matches. Exclusion patterns are compared with accents kept, which is why both `prácticas` and `practicas` are listed.
+- Every track uses the example profile's single resume (`backend`). Point each at its own variant if you have more than one CV.
+- `seniority` keeps the defaults, which reject `junior` titles. If you are a junior engineer, move `junior` from `reject` to `allow` and lower the floor; `Becario`/`prácticas` internships stay excluded by title either way.
+- `submission.allowedAtsDomains` adds `jobs.eu.lever.co`, where EU-hosted Lever boards take applications, and `myworkdayjobs.com`, since a fifth of the Spain boards are Workday (Airbus, BBVA, Repsol and others; see [Workday accounts](#workday-accounts-environment-only)). Submission stays `manual` until you change it, and no employer is contacted until it is in `allowedCompanies`.
+
+**Profile.** The same `examples/profile.example.json` serves Spain; its US-specific questions are blank and simply asked if a form shows them. Set `compensation.currency` to `EUR`, and list `ES` (and every other EU or EEA country if you are an EU citizen, who may work in all of them without a permit) in `workAuthorization.authorizedIn` and `noSponsorshipRequiredIn`. The pre-answered privacy and data-processing consents cover GDPR consent checkboxes worded in English. A form that asks in Spanish (`tratamiento de mis datos personales`, `política de privacidad`) is put to you instead, unless you add those wordings to the `privacy-consent` and `data-processing-consent` patterns.
 
 ## Candidate accounts (environment only)
 

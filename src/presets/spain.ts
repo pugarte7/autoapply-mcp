@@ -90,7 +90,8 @@ export function readSiteSnapshot(data: unknown, tables: unknown): SiteSnapshot {
     return {
       name: company.name,
       levelsSlug: company.levels,
-      website: company.web ?? company.url ?? null,
+      // `url` falls back to the company's Levels.fyi page when it has no site of its own.
+      website: company.web ?? null,
       cities: company.cities,
       engineerMedian: engineer?.median ?? null,
       engineerCount: engineer?.n ?? 0,
@@ -142,6 +143,8 @@ function cleanSlug(value: string | undefined): string | null {
   return slug;
 }
 
+const RECRUITEE_RESERVED = new Set(["www", "app", "api", "docs", "support", "blog", "careers"]);
+
 /** Reads a board from a link to a hosted job board. Unrecognised links return null. */
 export function boardFromUrl(raw: string): BoardRef | null {
   let url: URL;
@@ -166,6 +169,19 @@ export function boardFromUrl(raw: string): BoardRef | null {
     const slug = cleanSlug(segments[0]);
     return slug ? { ats: "ashby", board: slug, region: "global" } : null;
   }
+  // These three cannot be guessed (the resolver has no probe for them), so a link is the only way in.
+  if (host === "jobs.smartrecruiters.com" || host === "careers.smartrecruiters.com") {
+    const slug = cleanSlug(segments[0]);
+    return slug ? { ats: "smartrecruiters", board: slug, region: "global" } : null;
+  }
+  if (host === "apply.workable.com") {
+    const slug = segments[0] === "j" ? null : cleanSlug(segments[0]);
+    return slug ? { ats: "workable", board: slug, region: "global" } : null;
+  }
+  const recruitee = /^([a-z0-9-]+)\.recruitee\.com$/.exec(host);
+  if (recruitee && !RECRUITEE_RESERVED.has(recruitee[1]!)) {
+    return { ats: "recruitee", board: recruitee[1]!, region: "global" };
+  }
   const workday = /^([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com$/.exec(host);
   if (workday) {
     // An optional locale segment comes first: /en-US/External, /es/External or /External.
@@ -176,7 +192,21 @@ export function boardFromUrl(raw: string): BoardRef | null {
   return null;
 }
 
-const ATS_LINK = /https?:\/\/(?:boards|job-boards)\.greenhouse\.io\/[^\s"'<>)\\]+|https?:\/\/jobs(?:\.eu)?\.lever\.co\/[^\s"'<>)\\]+|https?:\/\/jobs\.ashbyhq\.com\/[^\s"'<>)\\]+|https?:\/\/[a-z0-9-]+\.wd\d+\.myworkdayjobs\.com\/[^\s"'<>)\\]+/gi;
+const URL_TAIL = String.raw`[^\s"'<>)\\]*`;
+const ATS_LINK = new RegExp(
+  [
+    String.raw`https?://(?:boards|job-boards)\.greenhouse\.io/`,
+    String.raw`https?://jobs(?:\.eu)?\.lever\.co/`,
+    String.raw`https?://jobs\.ashbyhq\.com/`,
+    String.raw`https?://(?:jobs|careers)\.smartrecruiters\.com/`,
+    String.raw`https?://apply\.workable\.com/`,
+    String.raw`https?://[a-z0-9-]+\.recruitee\.com/?`,
+    String.raw`https?://[a-z0-9-]+\.wd\d+\.myworkdayjobs\.com/`,
+  ]
+    .map((prefix) => prefix + URL_TAIL)
+    .join("|"),
+  "gi",
+);
 
 /**
  * Every hosted board a page links to. The page is untrusted text and is only
@@ -334,6 +364,12 @@ async function websiteBoards(company: SiteCompany, deps: PresetDeps): Promise<Bo
 
 const MAX_OWN_BOARDS = 2;
 
+function judgeBoard(jobs: readonly Job[], inSpain: readonly Job[], source: CandidateReport["source"], company: SiteCompany): CandidateOutcome {
+  if (jobs.length === 0) return "no-postings";
+  if (source === "guess" && !boardNamesCompany(jobs, company)) return "unconfirmed";
+  return inSpain.length === 0 ? "no-spain-postings" : "kept";
+}
+
 /** Probes one company and keeps the board with the most postings open in Spain. */
 export async function probeCompany(company: SiteCompany, rules: SiteRules, deps: PresetDeps): Promise<CompanyReport> {
   const tier = salaryTier(company, rules);
@@ -364,14 +400,7 @@ export async function probeCompany(company: SiteCompany, rules: SiteRules, deps:
     try {
       const jobs = await deps.listJobs(entry);
       const inSpain = spainPostings(jobs);
-      const outcome: CandidateOutcome =
-        jobs.length === 0
-          ? "no-postings"
-          : source === "guess" && !boardNamesCompany(jobs, company)
-            ? "unconfirmed"
-            : inSpain.length === 0
-              ? "no-spain-postings"
-              : "kept";
+      const outcome = judgeBoard(jobs, inSpain, source, company);
       report = { ...ref, source, outcome, postings: jobs.length, spainPostings: inSpain.length };
     } catch (error) {
       report = { ...ref, source, outcome: "error", postings: 0, spainPostings: 0, detail: toErrorMessage(error) };
@@ -397,8 +426,24 @@ export type PresetSummary = {
   companiesKept: number;
 };
 
+/** A preset entry as a person would write it: schema defaults left out. */
+export type PresetEntry = Pick<Company, "name" | "ats" | "board" | "tier" | "tags"> & Partial<Pick<Company, "region" | "query">>;
+
+function presetEntry(company: Company): PresetEntry {
+  const { name, ats, board, tier, tags } = company;
+  return {
+    name,
+    ats,
+    board,
+    tier,
+    tags,
+    ...(company.region === "eu" ? { region: company.region } : {}),
+    ...(company.query ? { query: company.query } : {}),
+  };
+}
+
 /** One entry per company and per board, sorted by name, so a rebuild diffs cleanly. */
-export function assemblePreset(reports: readonly CompanyReport[]): { version: 1; companies: Company[] } {
+export function assemblePreset(reports: readonly CompanyReport[]): { version: 1; companies: PresetEntry[] } {
   const byName = new Map<string, Company>();
   const boards = new Set<string>();
   for (const report of reports) {
@@ -409,11 +454,13 @@ export function assemblePreset(reports: readonly CompanyReport[]): { version: 1;
     byName.set(company.name.toLowerCase(), company);
     boards.add(key);
   }
-  const companies = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
+  const companies = [...byName.values()]
+    .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }))
+    .map(presetEntry);
   return { version: 1, companies };
 }
 
-export function summarize(reports: readonly CompanyReport[], preset: { companies: readonly Company[] }): PresetSummary {
+export function summarize(reports: readonly CompanyReport[], preset: { companies: readonly PresetEntry[] }): PresetSummary {
   const boardsFound: Record<string, number> = {};
   const boardsKept: Record<string, number> = {};
   for (const report of reports) {
