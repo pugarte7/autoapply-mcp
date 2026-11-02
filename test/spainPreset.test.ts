@@ -333,11 +333,13 @@ describe("the Spain campaign example", () => {
     expect(findStrayKeys(CampaignSchema, raw)).toEqual([]);
   });
 
-  it("targets Spain in euros and ships disarmed", () => {
+  it("targets Spain in euros, with the same submission policy as the US and Canada example", () => {
     expect(campaign.locations.allow).toEqual(["spain", "remote-spain", "remote-europe"]);
     expect(campaign.compensation.currency).toBe("EUR");
     expect(campaign.compensation.floors.ES).toBe(60000);
-    expect(campaign.submission.mode).toBe("manual");
+    const usCanada = CampaignSchema.parse(readJson("examples/campaign.example.json"));
+    expect(campaign.submission.mode).toBe(usCanada.submission.mode);
+    expect(campaign.submission.maxBatchSize).toBe(usCanada.submission.maxBatchSize);
     expect(campaign.submission.allowedCompanies).toEqual([]);
     // Lever's EU boards apply on their own host, which jobs.lever.co does not cover.
     expect(campaign.submission.allowedAtsDomains).toContain("jobs.eu.lever.co");

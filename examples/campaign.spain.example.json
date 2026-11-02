@@ -237,7 +237,7 @@
   },
   "freshnessDays": 45,
   "submission": {
-    "mode": "manual",
+    "mode": "auto",
     "allowedAtsDomains": [
       "boards.greenhouse.io",
       "job-boards.greenhouse.io",
@@ -248,7 +248,7 @@
     ],
     "allowedCompanies": [],
     "dailyLimit": 20,
-    "maxBatchSize": 3,
+    "maxBatchSize": 15,
     "maxPerCompany": 3,
     "minDelaySeconds": 60,
     "captureScreenshots": true
