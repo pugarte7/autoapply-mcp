@@ -6,6 +6,7 @@ import { registerDraftingTools } from "./tools/drafting.js";
 import { registerSubmissionTools } from "./tools/submission.js";
 import { registerTrackingTools } from "./tools/tracking.js";
 import { registerSourceSearchTools } from "./tools/sourceSearch.js";
+import { registerSetupTools } from "./tools/setup.js";
 
 export const SERVER_NAME = "autoapply-mcp";
 /**
@@ -116,6 +117,7 @@ export function createServer(): McpServer {
   registerBatchTools(server);
   registerSubmissionTools(server);
   registerTrackingTools(server);
+  registerSetupTools(server);
 
   return server;
 }

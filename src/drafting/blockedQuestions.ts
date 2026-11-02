@@ -14,7 +14,7 @@ const CATEGORY_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ["citizenship", /\bcitizen\w*\b|\bnationality\b|\bpermanent resident\b|\bgreen card\b/i],
   ["clearance", /\bclearance\b|\bts\/sci\b|\btop secret\b|\bpublic trust\b/i],
   ["criminal-history", /\b(convicted|conviction|felony|misdemeanor|criminal (?:record|history)|background check)\b/i],
-  ["compensation", /\b(salary|compensation|pay)\b[^?]{0,30}\b(expectation|requirement|range|desired|current)\b|\bdesired (?:salary|compensation)\b|\bcurrent (?:salary|compensation)\b|\bexpected (?:salary|compensation)\b/i],
+  ["compensation", /\b(salary|compensation|pay)\b[^?]{0,30}\b(expectations?|requirements?|range|desired|current)\b|\bdesired (?:salary|compensation)\b|\bcurrent (?:salary|compensation)\b|\bexpected (?:salary|compensation)\b/i],
   ["demographic", /\b(gender|race|racial|ethnic\w*|hispanic|latino|pronoun|sexual orientation|lgbtq|transgender)\b/i],
   ["veteran", /\bveteran\b|\bmilitary service\b|\barmed forces\b/i],
   ["disability", /\bdisabilit\w*\b|\baccommodation\b/i],

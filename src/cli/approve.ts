@@ -9,6 +9,7 @@ import {
   recordBatchApproval,
 } from "../submission/approvals.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
+import { confirmSetup } from "./confirmSetup.js";
 
 /**
  * Approval from the person's own terminal, for MCP clients that cannot show an
@@ -16,6 +17,7 @@ import { AppError, toErrorMessage } from "../util/errors.js";
  *
  *   node dist/cli/approve.js <applicationId> <packetHash>
  *   node dist/cli/approve.js --batch <batchId> <manifestHash> <count>
+ *   node dist/cli/approve.js --setup <changeId>
  *
  * It shows what would be sent and records an approval only on a typed "yes".
  * It will not run without a terminal on both ends, which is what keeps an
@@ -32,6 +34,7 @@ async function main(argv: string[]): Promise<number> {
     console.error("Run this in your own terminal: an approval is the person's to give, not an agent's.");
     return 1;
   }
+  if (argv[0] === "--setup") return confirmSetup(argv[1]);
   const batch = argv[0] === "--batch";
   const [id, hash, count] = batch ? argv.slice(1) : argv;
   if (!id || !hash || (batch && !count)) {

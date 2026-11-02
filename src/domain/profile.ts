@@ -29,11 +29,39 @@ const questionPattern = nonEmpty.max(
 
 export const SkillLevelSchema = z.enum(["expert", "strong", "working", "familiar"]);
 
+/**
+ * When a skill was first used professionally: a year, or "YYYY-MM" when the
+ * month is known. It answers "How many years of experience do you have with
+ * X?", which boards ask per technology and which the dated experience list
+ * cannot answer, because a job's dates say nothing about what was used in it.
+ * A bare year is counted from the end of that year, so the figure given is
+ * never more than the person has; the month form is counted exactly.
+ */
+export const SkillSinceSchema = z.union([
+  z.number().int().min(1950).max(2100),
+  z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "since must be a year or YYYY-MM"),
+]);
+
 export const SkillSchema = z.object({
   name: nonEmpty,
   aliases: z.array(nonEmpty).default([]),
   level: SkillLevelSchema.default("working"),
   tags: z.array(nonEmpty).default([]),
+  since: SkillSinceSchema.optional(),
+});
+
+/**
+ * A spoken language and its level on the CEFR scale, or "native". Forms ask
+ * "What is your level of English?" in a dozen wordings and offer CEFR codes,
+ * words such as "Fluent" or "Professional working proficiency", or a free text
+ * box; the level is the one fact all of them are asking for.
+ */
+export const LanguageLevelSchema = z.enum(["A1", "A2", "B1", "B2", "C1", "C2", "native"]);
+export const LanguageSchema = z.object({
+  name: nonEmpty,
+  level: LanguageLevelSchema,
+  /** Other names forms use for it, such as "Castilian" for Spanish. */
+  aliases: z.array(nonEmpty).default([]),
 });
 
 export const FactSchema = z.object({
@@ -248,6 +276,7 @@ export const ProfileSchema = z.object({
   facts: z.array(FactSchema).default([]),
   experience: z.array(ExperienceSchema).default([]),
   education: z.array(EducationSchema).default([]),
+  languages: z.array(LanguageSchema).default([]),
   answers: z.array(ApprovedAnswerSchema).default([]),
   narratives: z.array(NarrativeTemplateSchema).default([]),
 });
@@ -257,3 +286,5 @@ export type ResumeVariant = z.infer<typeof ResumeVariantSchema>;
 export type ApprovedAnswer = z.infer<typeof ApprovedAnswerSchema>;
 export type Skill = z.infer<typeof SkillSchema>;
 export type Fact = z.infer<typeof FactSchema>;
+export type Language = z.infer<typeof LanguageSchema>;
+export type LanguageLevel = z.infer<typeof LanguageLevelSchema>;

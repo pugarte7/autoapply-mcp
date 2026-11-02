@@ -11,6 +11,7 @@ import type { AnswerOwner } from "../drafting/answerOwner.js";
 import { computePacketHash, renderPacketPreview, type SubmissionPacket } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
 import { handler, ok, okText } from "./helpers.js";
+import { rememberAnswers } from "./setup.js";
 
 /** Tools that assemble a single application without sending anything. */
 
@@ -137,14 +138,32 @@ export function registerDraftingTools(server: McpServer): void {
         applicationId: z.string().min(1),
         coverLetter: z.string().optional(),
         answers: z
-          .array(z.object({ questionKey: z.string().min(1), answer: z.string() }))
+          .array(
+            z.object({
+              questionKey: z.string().min(1),
+              answer: z.string(),
+              remember: z
+                .boolean()
+                .optional()
+                .describe("Also store it as a standing answer for every application that asks this question, as remember_answer does."),
+              statedByPerson: z
+                .boolean()
+                .optional()
+                .describe("With remember: true only when the person gave this answer in their own words; otherwise they are asked to confirm it."),
+            }),
+          )
           .optional()
           .describe("Answers keyed by questionKey from prepare_application."),
         notes: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    handler(async (args: { applicationId: string; coverLetter?: string; answers?: Array<{ questionKey: string; answer: string }>; notes?: string }) => {
+    handler(async (args: {
+      applicationId: string;
+      coverLetter?: string;
+      answers?: Array<{ questionKey: string; answer: string; remember?: boolean; statedByPerson?: boolean }>;
+      notes?: string;
+    }) => {
       const workspace = getWorkspace();
       const application = getApplication(workspace.db, args.applicationId);
       if (!application) throw new AppError("application_not_found", `no application ${args.applicationId}`);
@@ -163,7 +182,9 @@ export function registerDraftingTools(server: McpServer): void {
 
       const answers: DraftAnswer[] = application.answers.map((answer) =>
         updates.has(answer.questionKey)
-          ? { ...answer, answer: updates.get(answer.questionKey)!, source: "human", citation: "provided via set_application_content" }
+          ? // The model calls this tool, so the answer is the agent's; only the
+            // person's own dialog or terminal can make an answer theirs.
+            { ...answer, answer: updates.get(answer.questionKey)!, source: "agent", citation: "provided via set_application_content" }
           : answer,
       );
 
@@ -196,12 +217,28 @@ export function registerDraftingTools(server: McpServer): void {
         status: updated.status,
       });
 
+      // Remembered after this application is saved, so the re-draft that
+      // follows sees its answers as given and leaves them alone.
+      const toRemember = (args.answers ?? []).filter((entry) => entry.remember === true);
+      const remembered =
+        toRemember.length > 0
+          ? await rememberAnswers(
+              server,
+              toRemember.map((entry) => ({
+                label: application.answers.find((answer) => answer.questionKey === entry.questionKey)!.label,
+                answer: entry.answer,
+                statedByPerson: entry.statedByPerson === true,
+              })),
+            )
+          : undefined;
+
       return ok({
         applicationId: updated.id,
         status: updated.status,
         packetHash: updated.packetHash,
         outstandingQuestions: stillMissing.map((answer) => answer.label),
         optionalUnanswered: optionalUnanswered.map((answer) => answer.label),
+        ...(remembered ? { remembered } : {}),
         note: "Approval is bound to packetHash; approve the value shown here.",
       });
     }),
