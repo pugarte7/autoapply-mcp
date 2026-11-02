@@ -9,7 +9,7 @@ These let an agent set everything up from inside the conversation, so a client w
 A few fields turn a sensitive question into a standing answer: `workAuthorization.alwaysReviewManually: false`, a `compensation.disclosurePolicy` other than `decline`, an auto-filled answer in a blocked category (work authorization, pay, demographics, legal, essays...), an auto-filled demographic or date of birth, and removing a category from `blockedQuestionCategories`. Those are written at their safe value and asked of the person through the approval dialog. A client with no dialog gets back `standing.state: "pending"` and a command for the person to run in their own terminal, `node dist/cli/approve.js --setup <changeId>`. The agent cannot make them standing itself. The text the person sees is rendered by the server from the change.
 
 ### `onboarding_questions`
-What the profile and campaign still lack for the forms boards typically show, grouped (about you, CV, work authorization, pay, where and how, roles, common form questions, blank answer-bank entries, verification mailbox), with a `message` that asks all of it at once. Call it before asking the person anything.
+What the profile and campaign still lack for the forms boards typically show, grouped (about you, CV, work authorization, pay, where and how, roles, common form questions, blank answer-bank entries, verification mailbox), with a `message` that asks all of it at once. Call it before asking the person anything. Gaps the agent closes itself, such as no companies configured, are listed under `agentFixes` with the tool to call and left out of the message.
 
 ### `setup_profile`
 Creates or updates profile.json from what the agent extracted from the CV and the person's messages. Takes any of `identity`, `personal`, `experience`, `education`, `skills` (with optional `since`), `facts`, `languages`, `preferences`, `workAuthorization`, `compensation`, `resumes`, `answers`, `narratives`, and `statedByPerson`.
@@ -18,6 +18,11 @@ The patch is deep-merged: objects key by key, lists entry by entry when entries 
 
 ### `update_campaign`
 Same pattern for campaign.json: `name`, `targetApplications`, `tracks`, `locations`, `compensation` (floors, fx), `seniority`, `exclusions`, `submission` (limits, allowlists, blocked categories) and `freshnessDays`. Boards are added with `add_company_board`.
+
+### `load_preset`
+Adds a shipped company list to companies.json: `preset` is `spain` (employers hiring in Spain or remote from Spain or Europe, `presets/spain.json`) or `us-canada` (`presets/ai-security-us-canada.json`). A company already listed, matched by name case-insensitively or by the same board under another name, is kept exactly as written, `active: false` included; companies.json is created if missing, kept as `.bak` otherwise, and the workspace reloads. With `campaign: true` and neither campaign.json nor campaign.draft.json present, the preset's campaign is written through the same validated path as `update_campaign`, with each track pointed at the profile's default resume; an existing campaign is never replaced. Reports `added`, `alreadyPresent` and `total`. Boards are discovery sources only and grant no submission permission, so nothing is asked of the person. The files are read from the installed package, so this works from `npx -y autoapply-mcp`.
+
+`onboarding_questions` reports an empty company list under `agentFixes` with `load_preset` as the fix, naming `spain` when the profile's country is Spain or the campaign allows `spain` or `remote-spain`.
 
 ### `remember_answer`
 Stores a standing answer in `profile.answers` and fills it into every open application (`drafted`, `needs_human`, `awaiting_approval`) whose question the drafting engine now answers from it. Reports `updatedApplications` with the questions each one gained.

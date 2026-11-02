@@ -34,7 +34,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "bin": {
-    "autoapply-mcp": "dist/index.js"
+    "autoapply-mcp": "dist/index.js",
+    "autoapply-mcp-init": "dist/cli/init.js",
+    "autoapply-mcp-doctor": "dist/cli/doctor.js"
   },
   "files": [
     "dist",

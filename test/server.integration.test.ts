@@ -213,6 +213,7 @@ describe("MCP server", () => {
         "list_queue",
         "list_rules",
         "list_sources",
+        "load_preset",
         "onboarding_questions",
         "prepare_application",
         "prepare_batch",

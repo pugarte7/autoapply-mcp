@@ -46,7 +46,8 @@ ${cvPath ? "" : `${cvLine}\n`}- Where they want to work: cities or countries, re
 
 Step 2. When they answer, build the profile:
 - Read the CV and extract identity, experience, education, skills and facts. A fact is one true statement from the CV; keep numbers only if the CV states them.
-- Call setup_profile with the profile, then update_campaign with the roles, locations, workplace types and salary floor they gave.
+- Call setup_profile with the profile. If they live in Spain or want to work there, call load_preset with preset spain and campaign true: it adds the shipped employers hiring in Spain and starts the campaign from the Spain one. Otherwise, if onboarding_questions lists agentFixes, apply them the same way.
+- Then call update_campaign with the roles, locations, workplace types and salary floor they gave.
 - Call remember_answer for each standing answer they gave (work authorization, sponsorship, notice period, salary disclosure, relocation, languages, self-identification) so forms fill them without asking again.
 
 Step 3. Read the ${AGENDA_URI} resource. If profileGaps lists something only the person knows, ask for all of it in one more message. If you can fill a gap from the CV, fill it and do not ask.
@@ -65,7 +66,7 @@ export function dailyApplyText(args: { maxApplications?: string; focus?: string 
   const focus = optional(args.focus);
   return `Run today's autoapply loop. Work through it without stopping to ask; the person hears from you once, at the end.
 
-1. Read ${AGENDA_URI}. Note today's remaining budget (dailyLimit minus submittedToday).
+1. Read ${AGENDA_URI}. Note today's remaining budget (dailyLimit minus submittedToday). If no companies are configured, call load_preset first (preset spain for a candidate in Spain); onboarding_questions names the preset in agentFixes.
 
 2. Find openings: discover_jobs, then list_queue${focus ? ` focused on ${focus}` : ""}. Pick${max ? ` up to ${max}` : " as many as the budget allows"}, best tier first. Skip duplicates and roles already applied to.
 

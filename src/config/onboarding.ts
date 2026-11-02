@@ -14,7 +14,9 @@ import { isPlainObject } from "./configFiles.js";
 
 export type OnboardingQuestion = { field: string; question: string; optional?: boolean };
 export type OnboardingGroup = { title: string; questions: OnboardingQuestion[] };
-export type OnboardingReport = { complete: boolean; groups: OnboardingGroup[]; message: string };
+/** A gap the agent closes itself with a tool, so it is never put to the person. */
+export type AgentFix = { field: string; gap: string; fix: { tool: string; arguments?: Record<string, unknown> }; note: string };
+export type OnboardingReport = { complete: boolean; groups: OnboardingGroup[]; agentFixes: AgentFix[]; message: string };
 
 /** How many blank answer-bank questions are listed by name before the rest are counted. */
 const BANK_LISTED = 20;
@@ -40,9 +42,51 @@ function storedBlank(root: unknown, path: string): boolean {
   return blank(at(root, `${path}.value`));
 }
 
+const SPAIN = new Set(["es", "esp", "spain", "españa", "espana"]);
+const US_CANADA = new Set(["us", "usa", "united states", "ca", "can", "canada"]);
+const US_CANADA_CLASSES = ["bay-area", "us-other", "canada", "remote-us", "remote-canada"];
+
+/**
+ * Which shipped company list fits this person, read from where they live and
+ * where the campaign looks. Null when neither says, since a guess would fill
+ * the queue with postings they cannot take.
+ */
+export function suggestedPreset(profile: Record<string, unknown> | null, campaign: Record<string, unknown> | null): "spain" | "us-canada" | null {
+  const country = String(at(profile, "identity.location.country") ?? "").trim().toLowerCase();
+  const allow = at(campaign, "locations.allow");
+  const allowed = Array.isArray(allow) ? allow.map(String) : [];
+  if (SPAIN.has(country) || allowed.includes("spain") || allowed.includes("remote-spain")) return "spain";
+  if (US_CANADA.has(country) || allowed.some((entry) => US_CANADA_CLASSES.includes(entry))) return "us-canada";
+  return null;
+}
+
+function companiesFix(
+  profile: Record<string, unknown> | null,
+  campaign: Record<string, unknown> | null,
+  companies: Record<string, unknown> | null,
+): AgentFix | null {
+  const active = entries(companies?.companies).filter((entry) => entry.active !== false);
+  if (active.length > 0) return null;
+  const preset = suggestedPreset(profile, campaign);
+  return {
+    field: "companies",
+    gap: "no companies configured",
+    fix: { tool: "load_preset", arguments: preset ? { preset } : {} },
+    note: preset
+      ? `Call load_preset with preset ${preset}; discovery has no boards to read until then. Do not ask the person.`
+      : "Call load_preset with the preset that matches where the person wants to work (spain or us-canada), or add their employers with add_company_board.",
+  };
+}
+
+export type OnboardingInputs = {
+  /** The raw companies file, null when it is missing. Left out, the company list is not checked. */
+  companies?: Record<string, unknown> | null;
+};
+
 export function onboardingQuestions(
   profile: Record<string, unknown> | null,
   campaign: Record<string, unknown> | null,
+  { companies }: OnboardingInputs = {},
 ): OnboardingReport {
   const p = profile ?? {};
   const c = campaign ?? {};
@@ -155,12 +199,14 @@ export function onboardingQuestions(
     ]);
   }
 
-  const complete = groups.every((entry) => entry.questions.every((question) => question.optional === true));
+  const companyGap = companies === undefined ? null : companiesFix(profile, campaign, companies);
+  const agentFixes = companyGap ? [companyGap] : [];
+  const complete = agentFixes.length === 0 && groups.every((entry) => entry.questions.every((question) => question.optional === true));
   const message =
     groups.length === 0
       ? "Nothing is missing."
       : `To apply for you I need a few things. Answer what you can in one go:\n\n${groups
           .map((entry) => `${entry.title}\n${entry.questions.map((question) => `- ${question.question}${question.optional ? " (optional)" : ""}`).join("\n")}`)
           .join("\n\n")}`;
-  return { complete, groups, message };
+  return { complete, groups, agentFixes, message };
 }

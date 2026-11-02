@@ -51,7 +51,7 @@ describe("server instructions", () => {
   });
 
   it("names the setup, memory, submission and rules tools and the prompts", () => {
-    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "remember_answer", "submit_application", "record_submission", "approve_rules", "onboard", "daily_apply"]) {
+    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "load_preset", "remember_answer", "submit_application", "record_submission", "approve_rules", "onboard", "daily_apply"]) {
       expect(instructions).toContain(name);
     }
   });

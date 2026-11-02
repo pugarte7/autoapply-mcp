@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, existsSync, renameSync } from "node:fs";
 import { CompanyListSchema, CompanySchema, type Company } from "../domain/campaign.js";
 import { AppError } from "../util/errors.js";
+import { isPlainObject, readRawJson, writeJsonAtomic } from "./configFiles.js";
 
 /**
  * Writes companies.json.
@@ -60,4 +61,55 @@ export function upsertCompany(path: string, candidate: unknown): AddBoardResult 
 
   writeCompanyFile(path, next);
   return { action, company, total: next.length };
+}
+
+export type MergeResult = {
+  path: string;
+  created: boolean;
+  added: string[];
+  alreadyPresent: number;
+  total: number;
+  backup: string | null;
+};
+
+const nameKey = (entry: Record<string, unknown>) => `name:${String(entry.name ?? "").trim().toLowerCase()}`;
+const boardKey = (entry: Record<string, unknown>) =>
+  `board:${String(entry.ats ?? "").toLowerCase()}|${String(entry.board ?? "").trim().toLowerCase()}`;
+
+/**
+ * Adds a list of boards to companies.json without touching what is there.
+ *
+ * Unlike upsertCompany, an entry already present wins: these lists arrive in
+ * bulk from a preset, and the person's own entry for a company (a corrected
+ * board, a search query, `active: false` to stop fetching it) is a decision a
+ * shipped list must not undo. A company counts as present by name,
+ * case-insensitively, or by the same board under another name, which would
+ * otherwise be fetched twice and surface every posting twice. The person's
+ * entries are written back as they were, not as parsed, so their defaults stay
+ * unwritten; the previous file is kept as companies.json.bak.
+ */
+export function mergeCompanies(path: string, incoming: readonly Record<string, unknown>[]): MergeResult {
+  const raw = readRawJson(path);
+  if (raw && !CompanyListSchema.safeParse(raw).success) {
+    throw new AppError("config_invalid", `companies file at ${path} failed validation; fix it before loading a preset`, { path });
+  }
+  const existing = (Array.isArray(raw?.companies) ? raw.companies : []).filter(isPlainObject);
+  const seen = new Set(existing.flatMap((entry) => [nameKey(entry), boardKey(entry)]));
+  const added: Record<string, unknown>[] = [];
+  for (const entry of incoming) {
+    if (seen.has(nameKey(entry)) || seen.has(boardKey(entry))) continue;
+    seen.add(nameKey(entry));
+    seen.add(boardKey(entry));
+    added.push(entry);
+  }
+  const companies = [...existing, ...added];
+  if (!raw || added.length > 0) writeJsonAtomic(path, { ...(raw ?? { version: 1 }), companies });
+  return {
+    path,
+    created: !raw,
+    added: added.map((entry) => String(entry.name)),
+    alreadyPresent: incoming.length - added.length,
+    total: companies.length,
+    backup: raw && added.length > 0 ? `${path}.bak` : null,
+  };
 }
