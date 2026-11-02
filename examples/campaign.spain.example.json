@@ -1,0 +1,249 @@
+{
+  "version": 1,
+  "name": "spain-software",
+  "targetApplications": 100,
+  "tracks": [
+    {
+      "id": "backend",
+      "label": "Backend and general software engineering",
+      "allocation": 0.25,
+      "titleIncludes": [
+        "backend",
+        "back-end",
+        "back end",
+        "software engineer",
+        "software developer",
+        "ingeniero de software",
+        "ingeniera de software",
+        "desarrollador",
+        "desarrolladora",
+        "programador",
+        "programadora"
+      ],
+      "titleExcludes": [
+        "frontend",
+        "front-end",
+        "full stack",
+        "fullstack",
+        "mobile",
+        "android",
+        "sales engineer",
+        "solutions engineer",
+        "support engineer",
+        "qa engineer"
+      ],
+      "keywords": [
+        { "term": "microservices", "weight": 2, "aliases": ["microservicios"] },
+        { "term": "distributed systems", "weight": 2, "aliases": ["sistemas distribuidos"] },
+        { "term": "java", "weight": 1 },
+        { "term": "python", "weight": 1 },
+        { "term": "golang", "weight": 1 },
+        { "term": "postgresql", "weight": 1, "aliases": ["postgres"] },
+        { "term": "rest api", "weight": 1, "aliases": ["graphql"] }
+      ],
+      "resumeId": "backend"
+    },
+    {
+      "id": "frontend",
+      "label": "Frontend engineering",
+      "allocation": 0.15,
+      "titleIncludes": [
+        "frontend",
+        "front-end",
+        "front end",
+        "web developer",
+        "ui engineer",
+        "desarrollador web",
+        "desarrolladora web",
+        "desarrollador frontend",
+        "desarrolladora frontend"
+      ],
+      "titleExcludes": ["full stack", "fullstack", "full-stack"],
+      "keywords": [
+        { "term": "react", "weight": 3, "aliases": ["react.js", "reactjs"] },
+        { "term": "typescript", "weight": 2 },
+        { "term": "javascript", "weight": 1 },
+        { "term": "next.js", "weight": 1, "aliases": ["nextjs"] },
+        { "term": "vue", "weight": 1, "aliases": ["vue.js"] },
+        { "term": "angular", "weight": 1 },
+        { "term": "accessibility", "weight": 1, "aliases": ["accesibilidad", "a11y"] }
+      ],
+      "resumeId": "backend"
+    },
+    {
+      "id": "fullstack",
+      "label": "Full-stack engineering",
+      "allocation": 0.15,
+      "titleIncludes": ["full stack", "fullstack", "full-stack", "desarrollador full stack", "desarrolladora full stack"],
+      "titleExcludes": [],
+      "keywords": [
+        { "term": "react", "weight": 2 },
+        { "term": "typescript", "weight": 2 },
+        { "term": "node.js", "weight": 2, "aliases": ["nodejs"] },
+        { "term": "python", "weight": 1 },
+        { "term": "ruby on rails", "weight": 1, "aliases": ["rails"] }
+      ],
+      "resumeId": "backend"
+    },
+    {
+      "id": "data",
+      "label": "Data engineering",
+      "allocation": 0.15,
+      "titleIncludes": [
+        "data engineer",
+        "analytics engineer",
+        "data platform",
+        "big data",
+        "ingeniero de datos",
+        "ingeniera de datos"
+      ],
+      "titleExcludes": ["data entry"],
+      "keywords": [
+        { "term": "spark", "weight": 2, "aliases": ["pyspark"] },
+        { "term": "airflow", "weight": 2 },
+        { "term": "dbt", "weight": 2 },
+        { "term": "sql", "weight": 1 },
+        { "term": "kafka", "weight": 1 },
+        { "term": "snowflake", "weight": 1, "aliases": ["bigquery", "databricks"] }
+      ],
+      "resumeId": "backend"
+    },
+    {
+      "id": "ml",
+      "label": "Machine learning and AI",
+      "allocation": 0.1,
+      "titleIncludes": [
+        "machine learning",
+        "ml engineer",
+        "mlops",
+        "ai engineer",
+        "data scientist",
+        "applied scientist",
+        "cientifico de datos",
+        "cientifica de datos",
+        "ingeniero de ia",
+        "ingeniera de ia"
+      ],
+      "titleExcludes": [],
+      "keywords": [
+        { "term": "machine learning", "weight": 3, "aliases": ["aprendizaje automatico"] },
+        { "term": "pytorch", "weight": 2, "aliases": ["tensorflow"] },
+        { "term": "llm", "weight": 2, "aliases": ["large language model"] },
+        { "term": "python", "weight": 1 },
+        { "term": "nlp", "weight": 1 }
+      ],
+      "resumeId": "backend"
+    },
+    {
+      "id": "platform",
+      "label": "DevOps, platform and SRE",
+      "allocation": 0.1,
+      "titleIncludes": [
+        "devops",
+        "platform engineer",
+        "site reliability",
+        "sre",
+        "infrastructure engineer",
+        "cloud engineer",
+        "ingeniero devops",
+        "ingeniera devops",
+        "ingeniero de plataforma",
+        "ingeniera de plataforma",
+        "ingeniero cloud",
+        "ingeniera cloud"
+      ],
+      "titleExcludes": ["sales", "support engineer"],
+      "keywords": [
+        { "term": "kubernetes", "weight": 3, "aliases": ["k8s"] },
+        { "term": "terraform", "weight": 2 },
+        { "term": "aws", "weight": 1, "aliases": ["gcp", "azure"] },
+        { "term": "observability", "weight": 1, "aliases": ["observabilidad", "prometheus", "grafana"] },
+        { "term": "ci/cd", "weight": 1 }
+      ],
+      "resumeId": "backend"
+    },
+    {
+      "id": "mobile",
+      "label": "Mobile engineering",
+      "allocation": 0.1,
+      "titleIncludes": [
+        "mobile",
+        "android",
+        "ios engineer",
+        "ios developer",
+        "flutter",
+        "react native",
+        "desarrollador movil",
+        "desarrolladora movil",
+        "desarrollador ios",
+        "desarrolladora ios",
+        "desarrollador android",
+        "desarrolladora android"
+      ],
+      "titleExcludes": [],
+      "keywords": [
+        { "term": "kotlin", "weight": 2 },
+        { "term": "swift", "weight": 2, "aliases": ["swiftui"] },
+        { "term": "flutter", "weight": 1, "aliases": ["dart"] },
+        { "term": "react native", "weight": 1 }
+      ],
+      "resumeId": "backend"
+    }
+  ],
+  "locations": {
+    "allow": ["spain", "remote-spain", "remote-europe"],
+    "workplaceTypes": ["onsite", "hybrid", "remote", "unknown"],
+    "includePatterns": [],
+    "excludePatterns": []
+  },
+  "compensation": {
+    "currency": "EUR",
+    "floors": { "ES": 60000, "*": 60000 },
+    "fx": { "EUR": 1, "USD": 0.86, "GBP": 1.15, "CHF": 1.07 },
+    "allowUnknown": true,
+    "rejectBelowFloor": true
+  },
+  "seniority": {
+    "allow": ["senior", "staff", "principal", "unspecified"],
+    "reject": ["intern", "new-grad", "junior", "manager", "director", "executive"]
+  },
+  "exclusions": {
+    "titlePatterns": [
+      "recruiter",
+      "account executive",
+      "sales",
+      "marketing",
+      "comercial",
+      "ventas",
+      "becario",
+      "becaria",
+      "prácticas",
+      "practicas"
+    ],
+    "descriptionPatterns": [],
+    "companies": []
+  },
+  "scoring": {
+    "weights": {
+      "roleAlignment": 25,
+      "domainAlignment": 25,
+      "stackAlignment": 15,
+      "seniority": 10,
+      "compensation": 10,
+      "workAuthorization": 10,
+      "freshness": 5
+    },
+    "thresholds": { "tierA": 85, "tierB": 75, "tierC": 68 }
+  },
+  "freshnessDays": 45,
+  "submission": {
+    "mode": "manual",
+    "allowedAtsDomains": ["boards.greenhouse.io", "job-boards.greenhouse.io", "jobs.lever.co", "jobs.eu.lever.co", "jobs.ashbyhq.com"],
+    "allowedCompanies": [],
+    "dailyLimit": 20,
+    "maxBatchSize": 3,
+    "maxPerCompany": 3,
+    "minDelaySeconds": 60,
+    "captureScreenshots": true
+  }
+}

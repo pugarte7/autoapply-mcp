@@ -52,6 +52,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:evals": "tsc -p evals/tsconfig.json",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json",
+    "preset:spain": "npm run build && node scripts/build-spain-preset.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { resolvePaths } from "../config/paths.js";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { parseArgs } from "node:util";
+import { resolvePaths, type WorkspacePaths } from "../config/paths.js";
 import { toErrorMessage } from "../util/errors.js";
 
 /**
@@ -22,8 +23,35 @@ import { toErrorMessage } from "../util/errors.js";
  */
 
 const here = dirname(fileURLToPath(import.meta.url));
-// dist/cli/init.js -> repository root
+// dist/cli/init.js (or src/cli/init.ts under test) -> repository root
 const repoRoot = resolve(here, "..", "..");
+
+/**
+ * A preset is a campaign and the company list it was written for. They are
+ * chosen together because they only make sense together: the Spain campaign
+ * admits postings in Spain and remote in Europe, in euros, and the US/Canada
+ * list has almost none, so mixing them gives a campaign that discovers nothing.
+ *
+ * us-canada stays the default so `init` with no flag does what it always did.
+ * No default is guessed from the profile: init runs before the profile is
+ * written, and a guess would be wrong for every person who has not filled it in.
+ */
+export const PRESETS = {
+  "us-canada": {
+    campaign: "examples/campaign.example.json",
+    companies: "presets/ai-security-us-canada.json",
+  },
+  spain: {
+    campaign: "examples/campaign.spain.example.json",
+    companies: "presets/spain.json",
+  },
+} as const;
+export type PresetName = keyof typeof PRESETS;
+export const DEFAULT_PRESET: PresetName = "us-canada";
+
+export function isPresetName(value: string): value is PresetName {
+  return Object.hasOwn(PRESETS, value);
+}
 
 type Seed = { target: string; source: string; label: string };
 
@@ -39,48 +67,52 @@ function copySeed(seed: Seed): { ok: boolean; detail: string } {
   return { ok: true, detail: `created from ${seed.label}` };
 }
 
-function main(): void {
-  const paths = resolvePaths();
-  const force = process.argv.includes("--force");
-  if (force) {
-    console.error("init does not overwrite existing files; remove them by hand if that is really what you want.");
-    process.exitCode = 1;
-    return;
-  }
+export type InitResult = { ok: boolean; lines: string[] };
 
-  console.log(`autoapply-mcp init\nhome: ${paths.home}\n`);
-
+/** Seeds a home from one preset. Exported so the copy rules are tested without spawning the CLI. */
+export function initHome(paths: WorkspacePaths, preset: PresetName, root: string = repoRoot): InitResult {
+  const chosen = PRESETS[preset];
   const seeds: Seed[] = [
-    {
-      target: paths.profile,
-      source: join(repoRoot, "examples", "profile.example.json"),
-      label: "examples/profile.example.json",
-    },
-    {
-      target: paths.campaign,
-      source: join(repoRoot, "examples", "campaign.example.json"),
-      label: "examples/campaign.example.json",
-    },
-    {
-      target: paths.companies,
-      source: join(repoRoot, "presets", "ai-security-us-canada.json"),
-      label: "presets/ai-security-us-canada.json",
-    },
+    { target: paths.profile, source: join(root, "examples", "profile.example.json"), label: "examples/profile.example.json" },
+    { target: paths.campaign, source: join(root, chosen.campaign), label: chosen.campaign },
+    { target: paths.companies, source: join(root, chosen.companies), label: chosen.companies },
   ];
 
+  const lines: string[] = [];
   let failed = 0;
   for (const seed of seeds) {
     const result = copySeed(seed);
     if (!result.ok) failed += 1;
-    console.log(`${result.ok ? "OK  " : "FAIL"}  ${seed.target} - ${result.detail}`);
+    lines.push(`${result.ok ? "OK  " : "FAIL"}  ${seed.target} - ${result.detail}`);
   }
 
   mkdirSync(join(paths.home, "resumes"), { recursive: true });
   mkdirSync(paths.artifacts, { recursive: true });
   mkdirSync(dirname(paths.database), { recursive: true });
-  console.log(`OK    ${join(paths.home, "resumes")} - ready for your resume PDFs`);
+  lines.push(`OK    ${join(paths.home, "resumes")} - ready for your resume PDFs`);
+  return { ok: failed === 0, lines };
+}
 
-  if (failed > 0) {
+function main(): void {
+  const { values } = parseArgs({
+    options: { preset: { type: "string", default: DEFAULT_PRESET }, force: { type: "boolean", default: false } },
+  });
+  if (values.force) {
+    console.error("init does not overwrite existing files; remove them by hand if that is really what you want.");
+    process.exitCode = 1;
+    return;
+  }
+  if (!isPresetName(values.preset)) {
+    console.error(`unknown preset "${values.preset}"; choose one of: ${Object.keys(PRESETS).join(", ")}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const paths = resolvePaths();
+  console.log(`autoapply-mcp init\nhome: ${paths.home}\npreset: ${values.preset}\n`);
+  const result = initHome(paths, values.preset);
+  for (const line of result.lines) console.log(line);
+  if (!result.ok) {
     process.exitCode = 1;
     return;
   }
@@ -104,13 +136,25 @@ function main(): void {
       "",
       "Submission is automatic: an application you have approved is sent by the agent.",
       "Listing companies in submission.allowedCompanies limits that to those companies.",
+      ...(values.preset === "spain"
+        ? [
+            "",
+            "Spain preset: set profile.compensation.currency to EUR and list ES (and any other",
+            "EU country you may work in) in workAuthorization.authorizedIn. The campaign's",
+            "60,000 EUR floor and seniority rules are explained in docs/CONFIGURATION.md.",
+          ]
+        : []),
     ].join("\n"),
   );
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(toErrorMessage(error));
-  process.exitCode = 1;
+// Run only as the CLI, so tests can import initHome without seeding a real home.
+// realpath, because a global npm install can reach this file through a symlink.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  try {
+    main();
+  } catch (error) {
+    console.error(toErrorMessage(error));
+    process.exitCode = 1;
+  }
 }
