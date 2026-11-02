@@ -1,7 +1,8 @@
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CompanySchema } from "../domain/campaign.js";
-import { AppError } from "../util/errors.js";
+import { fetchJson } from "../sources/http.js";
+import { AppError, toErrorMessage } from "../util/errors.js";
 import { isPlainObject, readRawJson } from "./configFiles.js";
 
 /**
@@ -36,6 +37,7 @@ export const PRESETS = {
   spain: {
     campaign: "examples/campaign.spain.example.json",
     companies: "presets/spain.json",
+    url: "https://spanishtoptechcompanies.com/api/v1/boards.json",
   },
 } as const;
 export type PresetName = keyof typeof PRESETS;
@@ -59,10 +61,54 @@ function readShipped(relative: string, root: string): Record<string, unknown> {
  * entry is what gets merged, so defaults are not spelled out in the person's file.
  */
 export function presetCompanies(preset: PresetName, root: string = PACKAGE_ROOT): Record<string, unknown>[] {
-  const raw = readShipped(PRESETS[preset].companies, root);
+  return listedCompanies(readShipped(PRESETS[preset].companies, root));
+}
+
+const COMPANY_KEYS = ["name", "ats", "board", "tier", "tags", "region", "query"];
+
+function listedCompanies(raw: Record<string, unknown>): Record<string, unknown>[] {
   const companies = Array.isArray(raw.companies) ? raw.companies.filter(isPlainObject) : [];
   for (const company of companies) CompanySchema.parse(company);
-  return companies;
+  // Only the fields companies.json has: a list from the network may carry more.
+  return companies.map((company) => Object.fromEntries(COMPANY_KEYS.filter((key) => key in company).map((key) => [key, company[key]])));
+}
+
+export type PresetList = {
+  companies: Record<string, unknown>[];
+  /** The URL the list was read from, or "shipped" for the copy in the package. */
+  source: string;
+  /** Why the published list was not used, when the preset has one. */
+  fallback?: string;
+};
+
+/**
+ * The preset's companies, from the list its source publishes when it has one.
+ *
+ * spanishtoptechcompanies.com publishes the Spain list with that day's
+ * ranking, so a company the site adds reaches every install without a new
+ * release of this package. The copy shipped in the package is the fallback
+ * for when the site cannot be read or serves something that is not a list.
+ */
+export async function loadPresetCompanies(
+  preset: PresetName,
+  fetchList: (url: string) => Promise<unknown> = (url) =>
+    fetchJson<unknown>(url, { timeoutMs: 15_000, retries: 1, allowedHosts: [new URL(url).hostname] }),
+  root: string = PACKAGE_ROOT,
+): Promise<PresetList> {
+  const chosen = PRESETS[preset];
+  const url = "url" in chosen ? chosen.url : null;
+  let fallback: string | undefined;
+  if (url) {
+    try {
+      const raw = await fetchList(url);
+      const companies = isPlainObject(raw) ? listedCompanies(raw) : [];
+      if (companies.length > 0) return { companies, source: url };
+      fallback = `${url} listed no companies`;
+    } catch (error) {
+      fallback = `${url} could not be read: ${toErrorMessage(error)}`;
+    }
+  }
+  return { companies: presetCompanies(preset, root), source: "shipped", ...(fallback ? { fallback } : {}) };
 }
 
 /**

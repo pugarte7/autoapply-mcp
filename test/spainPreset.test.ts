@@ -93,6 +93,18 @@ describe("reading the salary site's aggregates", () => {
     expect(snapshot.companies[1]).toMatchObject({ name: "Otra", website: null, engineerMedian: null, engineerCount: 0 });
   });
 
+  it("reads the tables with per-place lookups and cells that name another cell", () => {
+    const shaped = {
+      "software-engineer": {
+        fields: ["c", "n", "median", "p25", "p75"],
+        cells: { "|": "remote|", "remote|": [[0, 12, 72000, 65000, 80000]] },
+        places: [{ code: "MD", n: 12, cities: [] }],
+      },
+      "software-engineer~MD": { whole: [0], cells: {}, summary: {}, years: {} },
+    };
+    expect(readSiteSnapshot(data, shaped).companies[0]).toMatchObject({ engineerMedian: 72000, engineerCount: 12 });
+  });
+
   it("ranks by the site's own bars", () => {
     expect(salaryTier({ engineerMedian: 72000, engineerCount: 12 }, rules)).toBe("A");
     expect(salaryTier({ engineerMedian: 90000, engineerCount: 1 }, rules)).toBe("B");

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { mergeCompanies } from "../src/config/companies.js";
 import { onboardingQuestions, suggestedPreset } from "../src/config/onboarding.js";
-import { PACKAGE_ROOT, PRESETS, presetCampaign, presetCompanies } from "../src/config/presets.js";
+import { loadPresetCompanies, PACKAGE_ROOT, PRESETS, presetCampaign, presetCompanies } from "../src/config/presets.js";
 import { CampaignSchema, CompanyListSchema } from "../src/domain/campaign.js";
 import { dailyApplyText, onboardText } from "../src/harness/prompts.js";
 
@@ -122,6 +122,55 @@ describe("shipped presets", () => {
   });
 });
 
+describe("loadPresetCompanies", () => {
+  const site = {
+    version: 1,
+    data_as_of: "2026-11-02",
+    companies: [
+      { name: "Ejemplo Labs", ats: "greenhouse", board: "ejemplolabs", tier: "A", tags: ["spain", "madrid"], note: "not a company field" },
+      { name: "Otra Cosa", ats: "workday", board: "otra/wd3/Careers", tier: "C", tags: ["spain"], query: "Spain" },
+    ],
+  };
+
+  it("reads the Spain list the salary site publishes", async () => {
+    const asked: string[] = [];
+    const list = await loadPresetCompanies("spain", async (url) => {
+      asked.push(url);
+      return site;
+    });
+    expect(asked).toEqual(["https://spanishtoptechcompanies.com/api/v1/boards.json"]);
+    expect(list.source).toBe(asked[0]);
+    expect(list.fallback).toBeUndefined();
+    expect(list.companies).toEqual([
+      { name: "Ejemplo Labs", ats: "greenhouse", board: "ejemplolabs", tier: "A", tags: ["spain", "madrid"] },
+      { name: "Otra Cosa", ats: "workday", board: "otra/wd3/Careers", tier: "C", tags: ["spain"], query: "Spain" },
+    ]);
+  });
+
+  it("falls back to the shipped copy when the site cannot be read or serves no list", async () => {
+    const shipped = presetCompanies("spain");
+    const down = await loadPresetCompanies("spain", async () => {
+      throw new Error("ECONNRESET");
+    });
+    expect(down).toMatchObject({ source: "shipped", companies: shipped });
+    expect(down.fallback).toMatch(/could not be read: ECONNRESET/);
+
+    for (const served of [{ version: 1, companies: [] }, "<html>", { companies: [{ name: "No Board", ats: "lever" }] }]) {
+      const list = await loadPresetCompanies("spain", async () => served);
+      expect(list.source).toBe("shipped");
+      expect(list.companies).toEqual(shipped);
+      expect(list.fallback).toBeTruthy();
+    }
+  });
+
+  it("reads us-canada from the package without asking the network", async () => {
+    const list = await loadPresetCompanies("us-canada", async () => {
+      throw new Error("should not be called");
+    });
+    expect(list).toEqual({ source: "shipped", companies: presetCompanies("us-canada") });
+  });
+});
+
 describe("onboarding gap for companies", () => {
   const empty = { version: 1, companies: [] };
 
@@ -157,5 +206,6 @@ describe("prompts", () => {
     expect(onboardText()).toMatch(/load_preset with preset spain/);
     expect(onboardText().indexOf("load_preset")).toBeLessThan(onboardText().indexOf("update_campaign with"));
     expect(dailyApplyText()).toMatch(/load_preset first \(preset spain/);
+    expect(dailyApplyText()).toMatch(/load_preset with preset spain every day/);
   });
 });

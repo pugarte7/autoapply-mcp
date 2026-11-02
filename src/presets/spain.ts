@@ -50,12 +50,15 @@ const SiteDataSchema = z.object({
 /**
  * companies.json: per-role tables whose rows start [companyIndex, n, median].
  * The "|" cell is every region and every experience band, which is the
- * median the site ranks a company by.
+ * median the site ranks a company by. Only the software-engineer table is
+ * read: the others include per-place lookups with no fields of their own, and
+ * a cell holding a string names the cell with the same rows.
  */
-const CompanyTablesSchema = z.record(
-  z.string(),
-  z.object({ fields: z.array(z.string()), cells: z.record(z.string(), z.array(z.array(z.unknown()))) }),
-);
+const CompanyTablesSchema = z.object({
+  "software-engineer": z
+    .object({ fields: z.array(z.string()), cells: z.record(z.string(), z.union([z.string(), z.array(z.array(z.unknown()))])) })
+    .optional(),
+});
 
 export type SiteCompany = {
   name: string;
@@ -78,7 +81,9 @@ export function readSiteSnapshot(data: unknown, tables: unknown): SiteSnapshot {
   const fields = engineers?.fields ?? [];
   const at = (name: string) => fields.indexOf(name);
   const byIndex = new Map<number, { n: number; median: number }>();
-  for (const row of engineers?.cells["|"] ?? []) {
+  const all = engineers?.cells["|"];
+  const rows = typeof all === "string" ? engineers?.cells[all] : all;
+  for (const row of Array.isArray(rows) ? rows : []) {
     const index = row[at("c")];
     const n = row[at("n")];
     const median = row[at("median")];
