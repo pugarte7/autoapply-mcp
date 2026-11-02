@@ -29,6 +29,10 @@ import { newId, nowIso } from "../util/hash.js";
 import { logger } from "../util/logger.js";
 import { abortedNextStep, fieldsToAnswer, formRunOptions, waitForCodeSecondsInput, type FieldToAnswer } from "./formRun.js";
 import { handler, ok } from "./helpers.js";
+import { join } from "node:path";
+import { recordRunResult } from "../submission/runRecording.js";
+import { DEFAULT_GATE_HOLD_MS, runHoldingGates, type GateHooks } from "../submission/sessions.js";
+import { awaitingCode, codeDeliveryFor } from "./submission.js";
 import { askPerson, batchQuestion, checkBatchManifest, packetFor, recordBatchApproval } from "../submission/approvals.js";
 
 /**
@@ -360,6 +364,12 @@ export function registerBatchTools(server: McpServer): void {
         maxSubmissions: z.number().int().positive().max(200).optional(),
         headless: z.boolean().optional(),
         waitForCodeSeconds: waitForCodeSecondsInput,
+        codeDelivery: z
+          .enum(["wait", "handoff"])
+          .optional()
+          .describe(
+            "Auto mode, at an emailed-code or Workday-link gate: 'handoff' parks that application with its browser held (state awaiting_code) and moves on to the next; finish it with provide_verification_code. Same default as submit_application.",
+          ),
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
@@ -369,6 +379,7 @@ export function registerBatchTools(server: McpServer): void {
       maxSubmissions?: number;
       headless?: boolean;
       waitForCodeSeconds?: number;
+      codeDelivery?: "wait" | "handoff";
     }) => {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
@@ -400,6 +411,8 @@ export function registerBatchTools(server: McpServer): void {
         fieldsToAnswer?: FieldToAnswer[];
         nextStep?: string;
       }> = [];
+      const parked: Array<Record<string, unknown>> = [];
+      const handoff = mode === "auto" && codeDeliveryFor(args) === "handoff";
       let submitted = 0;
 
       for (const item of ready) {
@@ -438,15 +451,42 @@ export function registerBatchTools(server: McpServer): void {
         }
 
         try {
-          const run = await runApplicationForm(
-            packet,
-            formRunOptions(workspace, job, application.id, {
-              mode,
-              headless: args.headless,
-              keepOpenMs: 0,
-              waitForCodeSeconds: args.waitForCodeSeconds,
-            }),
-          );
+          const options = formRunOptions(workspace, job, application.id, {
+            mode,
+            headless: args.headless,
+            keepOpenMs: 0,
+            waitForCodeSeconds: handoff ? DEFAULT_GATE_HOLD_MS / 1000 : args.waitForCodeSeconds,
+          });
+          const start = (hooks: Partial<GateHooks> = {}) => runApplicationForm(packet, { ...options, ...hooks });
+          // A gated application is parked with its browser held, and finishes
+          // on its own once provide_verification_code (or the server's mailbox)
+          // supplies the code; the batch moves on rather than wait for it.
+          const authorised = guard;
+          const first = handoff
+            ? await runHoldingGates(application.id, { applyUrl: job.applyUrl, batchId: batch.id }, start, (late) => {
+                recordRunResult(getWorkspace(), {
+                  application,
+                  job,
+                  currentHash,
+                  mode,
+                  result: late,
+                  batchId: batch.id,
+                  authorisedBy: authorisedBy(authorised),
+                  onSubmitted: () => noteRulesUse(getWorkspace(), application.id, authorised, ledger),
+                });
+                const sent = late.status === "submitted";
+                setBatchItemState(getWorkspace().db, batch.id, application.id, sent ? "submitted" : "needs_human", sent ? late.finalUrl : late.reason);
+              })
+            : { result: await start() };
+          if ("held" in first) {
+            setBatchItemState(workspace.db, batch.id, application.id, "awaiting_code", first.held.prompt);
+            parked.push(awaitingCode(first.held));
+            results.push({ applicationId: application.id, company: job.companyName, outcome: "awaiting_code", detail: first.held.prompt });
+            // The form was sent, so pacing applies before the next one.
+            if (policy.minDelaySeconds > 0) await sleep(policy.minDelaySeconds * 1000);
+            continue;
+          }
+          const run = first.result;
 
           if (run.status === "submitted") {
             saveApplication(workspace.db, {
@@ -491,6 +531,12 @@ export function registerBatchTools(server: McpServer): void {
           }
         } catch (error) {
           const message = toErrorMessage(error);
+          // Too many browsers already held at gates: this one has not started,
+          // so it stays ready for the next submit_batch.
+          if (error instanceof AppError && (error.code === "too_many_gates" || error.code === "gate_pending")) {
+            results.push({ applicationId: application.id, company: job.companyName, outcome: "deferred", detail: message });
+            continue;
+          }
           setBatchItemState(workspace.db, batch.id, item.applicationId, "failed", message);
           results.push({ applicationId: application.id, company: job.companyName, outcome: "failed", detail: message });
         }
@@ -510,8 +556,11 @@ export function registerBatchTools(server: McpServer): void {
         submitted,
         remaining,
         results,
+        ...(parked.length > 0 ? { awaitingCode: parked } : {}),
         nextStep:
-          submitBatchNextStep(remaining, results.filter((result) => result.fieldsToAnswer !== undefined).length),
+          parked.length > 0
+            ? `${parked.length} application(s) are held at a verification gate. For each one in awaitingCode, read the newest email from its sender received after its emailedAt and call provide_verification_code; do not submit them again.`
+            : submitBatchNextStep(remaining, results.filter((result) => result.fieldsToAnswer !== undefined).length),
       });
     }),
   );

@@ -122,7 +122,7 @@ it("waits five minutes at a code gate when a verification inbox is configured, w
   expect(new Set(paths).size).toBe(2);
 });
 
-it("honours an explicit waitForCodeSeconds, and does not wait when nothing can supply a code", async () => {
+it("honours an explicit waitForCodeSeconds, and with nothing to read a code holds the gate for the agent", async () => {
   const explicit = await approvedBatch(1);
   await call("submit_batch", { batchId: explicit, mode: "auto", waitForCodeSeconds: 90 });
   expect(vi.mocked(runApplicationForm).mock.calls[0]?.[1].codeWaitMs).toBe(90_000);
@@ -130,7 +130,11 @@ it("honours an explicit waitForCodeSeconds, and does not wait when nothing can s
   vi.mocked(runApplicationForm).mockClear();
   const unattended = await approvedBatch(1);
   await call("submit_batch", { batchId: unattended, mode: "auto" });
-  expect(vi.mocked(runApplicationForm).mock.calls[0]?.[1].codeWaitMs).toBe(0);
+  // No mailbox and no wait asked for: the gate is handed to the agent, held
+  // for provide_verification_code rather than abandoned at once.
+  const held = vi.mocked(runApplicationForm).mock.calls[0]?.[1];
+  expect(held?.codeWaitMs).toBe(900_000);
+  expect(held?.gateHandoff).toBeTypeOf("function");
 });
 
 it("tells the agent which fields of an aborted run it can answer itself", async () => {

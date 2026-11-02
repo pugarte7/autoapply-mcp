@@ -286,18 +286,29 @@ original.
 ## Verification codes (environment only)
 
 Greenhouse increasingly emails a one-time code before it accepts a submission,
-and the code dies the moment a second submit asks for a new one. `submit_application`
-and `submit_batch` therefore hold the browser at the gate for `waitForCodeSeconds`
-and poll `<artifacts>/<applicationId>.code` (one file per application, so two
-gated applications in a batch never read each other's code), which the agent or
-a person can write.
+and the code dies the moment a second submit asks for a new one. Whatever reads
+it, the browser has to stay at the gate until the code is typed in. There are
+three readers, and whichever answers first is used:
 
-Setting the variables below lets the server read that code out of a mailbox
-instead. Both readers run together, so the file hand-off keeps working and
-whichever code arrives first is used. With a mailbox configured,
-`waitForCodeSeconds` defaults to 300, so a run clears the gate by itself; without
-one it defaults to 0, because nothing would supply the code unprompted. Pass it
-explicitly to wait for a code you will write to the file yourself.
+- **The agent (hand-off).** With no mailbox configured, `submit_application` in
+  auto mode returns `awaiting_code` as soon as the gate appears and the server
+  keeps the browser parked at it, by default for 15 minutes (`waitForCodeSeconds`,
+  at most 30). The result names the sender to look for and when the code was
+  emailed. An agent with its own access to the candidate's mail, such as a Gmail
+  connector, reads the newest email from that sender received after that moment
+  and calls `provide_verification_code`; without mail access it asks the person
+  once. A refused code can be replaced while the gate still offers its box. Ask
+  for this explicitly with `codeDelivery: "handoff"`, also when a mailbox is set.
+- **The code file.** A person can write the code to
+  `<artifacts>/<applicationId>.code`; it is read in both modes.
+- **The server's own mailbox (wait).** Set the variables below and the call
+  blocks (300 seconds by default, `waitForCodeSeconds` changes it) while the server reads the code out
+  of the mailbox itself. In hand-off mode the same mailbox keeps being read in the
+  background.
+
+Held browsers live in the server process: they close when the hold expires, when
+the client disconnects and when the server stops, and the code then dies with
+them.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -337,6 +348,35 @@ the request, are followed; a link naming another tenant is skipped, and the
 link itself is never logged.
 
 Requires `npm install imapflow`, an optional peer dependency.
+
+In hand-off mode an agent can pass the link itself: the email to read is the
+newest from an address on `workday.com` or `myworkday.com`, and the link goes
+to `provide_verification_code` as `link`. It is held to the same checks as one
+read from the mailbox.
+
+### Later: Gmail OAuth instead of an app password
+
+An app password is the only way in today, and it is a blunt one: it reads the
+whole mailbox, needs 2-Step Verification, and a Workspace admin can switch app
+passwords off. Gmail's own OAuth with the `gmail.readonly` scope would replace
+it, searching only for the board's sender after the submit. That is not built
+yet, and it needs two things the server cannot do alone:
+
+- **An OAuth client of your own.** `gmail.readonly` is a restricted scope, so a
+  client ID shipped with this package would need Google's security assessment.
+  You create a Desktop OAuth client in a Google Cloud project, enable the Gmail
+  API, add yourself as a test user, and give the server its client ID. While the
+  project stays in testing, Google expires its refresh tokens after seven days,
+  so the sign-in has to be repeated weekly.
+- **A way to sign in without the server ever seeing your password.** Either the
+  MCP client opens Google's consent page through URL-mode elicitation and hands
+  the server only the resulting code, or a small CLI run in your own terminal
+  (like `approve.js`) does the sign-in and stores the refresh token in the macOS
+  Keychain. Either way the token stays out of `profile.json`, `campaign.json`,
+  logs and tool output, and form elicitation never asks for a password.
+
+Until then, the hand-off above covers agents that already have a Gmail
+connector, and an app password on a forwarding-only mailbox covers the rest.
 
 ## Career sites: Google, Meta, Amazon and Apple
 
