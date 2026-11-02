@@ -1,6 +1,6 @@
 {
   "name": "autoapply-mcp",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "AI job application agent: an MCP server that finds jobs on Greenhouse, Lever, Ashby and Workday and drafts every application, which your agent sends with its own browser after you approve.",
   "keywords": [
     "mcp",
@@ -49,7 +49,8 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:evals": "tsc -p evals/tsconfig.json",
     "typecheck:scripts": "tsc -p scripts/tsconfig.json",
