@@ -5,6 +5,7 @@ import { saveApplication } from "../db/repositories/applications.js";
 import { appendEvent } from "../db/repositories/events.js";
 import { applicationQuestion, askPerson, packetFor, recordApplicationDecision } from "../submission/approvals.js";
 import { runApplicationForm, type BrowserRunResult } from "../submission/browser.js";
+import { captchaNotifierFor, captchaWaitSecondsInput } from "../submission/captchaHandoff.js";
 import { getWorkspace } from "../config/load.js";
 import { recordRunResult } from "../submission/runRecording.js";
 import {
@@ -107,10 +108,11 @@ export function registerSubmissionTools(server: McpServer): void {
           .describe(
             "What to do at an emailed-code or Workday-link gate in auto mode. 'wait' blocks this call while the server reads the code file and its own mailbox. 'handoff' returns status awaiting_code at once with the browser held at the gate, so you can read the email yourself and call provide_verification_code. Defaults to 'handoff' when no inbox is configured and no waitForCodeSeconds is given, else 'wait'.",
           ),
+        captchaWaitSeconds: captchaWaitSecondsInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    handler(async (args: { applicationId: string; mode?: SubmissionMode; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number; codeDelivery?: "wait" | "handoff" }) => {
+    handler(async (args: { applicationId: string; mode?: SubmissionMode; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number; codeDelivery?: "wait" | "handoff"; captchaWaitSeconds?: number }) => {
       const { workspace, application, job, packet, currentHash } = packetFor(args.applicationId);
       const mode = args.mode ?? "auto";
       refuseWhileGateHeld(application.id);
@@ -130,6 +132,8 @@ export function registerSubmissionTools(server: McpServer): void {
         keepOpenMs: mode === "assisted" ? (args.keepOpenSeconds ?? 240) * 1000 : 0,
         verificationCode: args.verificationCode,
         waitForCodeSeconds: handoff ? holdSeconds : args.waitForCodeSeconds,
+        captchaWaitSeconds: args.captchaWaitSeconds,
+        notifyPerson: captchaNotifierFor(server),
       });
       const settle = (result: BrowserRunResult) => {
         const answers = recordRunResult(getWorkspace(), {

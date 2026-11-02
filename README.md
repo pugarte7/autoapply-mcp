@@ -58,7 +58,7 @@ Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, S
 2. **Sensitive questions always stop.** Work authorization, citizenship, compensation, criminal history, demographics and legal attestations require a human decision by default.
 3. **Approval binds to content, and it is yours.** `approve_application` shows you the packet and records your answer with its hash; the model cannot give it for you. Editing anything invalidates it and submission is refused.
 4. **Job descriptions are untrusted data.** Text from employers is scanned for prompt-injection patterns, wrapped in an explicit data boundary, and never treated as instructions.
-5. **Anti-bot controls are respected.** A detected CAPTCHA aborts the run and is handed to you to complete. There is no solving, evading or fingerprint spoofing.
+5. **Anti-bot controls are respected.** A detected CAPTCHA is handed to you in the open browser with the form filled, and the run continues once you solve it. There is no automated solving, evading or fingerprint spoofing.
 6. **Destinations are allowlisted.** Submissions only go to hosts the campaign explicitly trusts, over HTTPS.
 
 ## Quick start
@@ -304,7 +304,7 @@ It invents nothing. The server fills answers only from your profile and pre-appr
 
 ### Does it solve CAPTCHAs?
 
-No. A detected CAPTCHA stops the run and the agent asks you to complete it, then runs again.
+No. A detected CAPTCHA is shown to you in the filled browser window, with a notification, and the run carries on once you have solved it. If you don't within `captchaWaitSeconds` (three minutes by default), the application is handed back to you.
 
 ### Does it work for jobs in Europe or Spain?
 

@@ -22,6 +22,7 @@ import { prepareApplicationFor, type PreparedApplication } from "../drafting/pre
 import { autoFillableFields } from "../drafting/personal.js";
 import { answerOwner, type AnswerOwner } from "../drafting/answerOwner.js";
 import { runApplicationForm } from "../submission/browser.js";
+import { captchaNotifierFor, captchaWaitSecondsInput } from "../submission/captchaHandoff.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { authorisedBy, noteRulesUse, submissionGuard, type RunLedger } from "../submission/authorise.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
@@ -370,6 +371,7 @@ export function registerBatchTools(server: McpServer): void {
           .describe(
             "Auto mode, at an emailed-code or Workday-link gate: 'handoff' parks that application with its browser held (state awaiting_code) and moves on to the next; finish it with provide_verification_code. Same default as submit_application.",
           ),
+        captchaWaitSeconds: captchaWaitSecondsInput,
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
@@ -380,6 +382,7 @@ export function registerBatchTools(server: McpServer): void {
       headless?: boolean;
       waitForCodeSeconds?: number;
       codeDelivery?: "wait" | "handoff";
+      captchaWaitSeconds?: number;
     }) => {
       const workspace = getWorkspace();
       const batch = getBatch(workspace.db, args.batchId);
@@ -456,6 +459,8 @@ export function registerBatchTools(server: McpServer): void {
             headless: args.headless,
             keepOpenMs: 0,
             waitForCodeSeconds: handoff ? DEFAULT_GATE_HOLD_MS / 1000 : args.waitForCodeSeconds,
+            captchaWaitSeconds: args.captchaWaitSeconds,
+            notifyPerson: captchaNotifierFor(server),
           });
           const start = (hooks: Partial<GateHooks> = {}) => runApplicationForm(packet, { ...options, ...hooks });
           // A gated application is parked with its browser held, and finishes

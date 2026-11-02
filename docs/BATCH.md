@@ -258,7 +258,7 @@ additional reviewed batches rather than making a single unbounded batch.
 
 A board without browser submission is marked `blocked` with `ats_browser_not_supported`; the person applies at its URL and the agent calls `record_submission`.
 
-A CAPTCHA, an unfillable required field, or an off-allowlist redirect marks that application `needs_human` and the batch continues. Each such result carries `fieldsToAnswer` and a `nextStep`: the agent answers the `who: "agent"` fields from your profile and resubmits that application. With a verification mailbox configured, each run waits up to 300 seconds at a code gate (`waitForCodeSeconds` changes it), reading the code from the mailbox or from that application's own `<artifacts>/<applicationId>.code`.
+An unfillable required field, an off-allowlist redirect, or a CAPTCHA the person did not solve within `captchaWaitSeconds` marks that application `needs_human` and the batch continues. Each such result carries `fieldsToAnswer` and a `nextStep`: the agent answers the `who: "agent"` fields from your profile and resubmits that application. With a verification mailbox configured, each run waits up to 300 seconds at a code gate (`waitForCodeSeconds` changes it), reading the code from the mailbox or from that application's own `<artifacts>/<applicationId>.code`; without one, gated applications are parked for `provide_verification_code`.
 
 ## Realistic volume
 

@@ -79,6 +79,8 @@ export function formRunOptions(
     keepOpenMs: number;
     verificationCode?: string;
     waitForCodeSeconds?: number;
+    captchaWaitSeconds?: number;
+    notifyPerson?: BrowserRunOptions["notifyPerson"];
   },
 ): BrowserRunOptions {
   const { profile, campaign } = workspace;
@@ -101,6 +103,8 @@ export function formRunOptions(
     // One file per application, so codes for two gated applications in the
     // same batch can never be read by the wrong form.
     codeFilePath: join(workspace.paths.artifacts, `${applicationId}.code`),
+    captchaWaitSeconds: run.captchaWaitSeconds,
+    notifyPerson: run.notifyPerson,
   };
 }
 

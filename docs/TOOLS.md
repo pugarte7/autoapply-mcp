@@ -198,6 +198,7 @@ Runs every guard, then acts according to mode.
 | `verificationCode` | `string?` | The one-time code the board emailed after a previous attempt hit its gate; each attempt emails a new one |
 | `waitForCodeSeconds` | `number?` | Hold the browser at a verification gate for this long (at most 1800) while the code is read from `<artifacts>/<applicationId>.code` or the configured mailbox; also bounds the wait for Workday's account-verification link. Defaults to 300 with a verification mailbox configured. With `codeDelivery: "handoff"` it is how long the gate is held (default 900) |
 | `codeDelivery` | `"wait" \| "handoff"?` | Auto mode, at a code or link gate. `wait` blocks this call while the server reads the file and its mailbox. `handoff` returns `awaiting_code` at once with the browser held. Defaults to `handoff` when no mailbox is configured and no `waitForCodeSeconds` is given, otherwise `wait` |
+| `captchaWaitSeconds` | `number?` | How long to hold the filled form open for the person to solve an interactive CAPTCHA (default 180, at most 900, 0 stops at once). A headless run that meets one is redone headed once when a display is available. See [SAFETY.md](SAFETY.md#anti-bot-controls) |
 
 - `auto` (the default) fills and clicks submit. Requires campaign mode `auto`, every required field fillable, no unresolved questions and, when `submission.allowedCompanies` lists companies, one of them. With ATS credentials available it registers a candidate account where a board demands one, on any ATS.
 - `assisted` fills the hosted form in a visible browser, screenshots it, and leaves it open for you to review and submit. If your submission reaches the board's confirmation page during the hold, the run returns at once and records it as submitted with that page as evidence; otherwise it returns `prepared` and you call `record_submission` yourself. Agents use it only when the person asks to watch or to submit themselves.
@@ -297,10 +298,11 @@ cap reached defers the remainder.
 | `mode` | `"auto" \| "assisted"`, default `auto` |
 | `maxSubmissions` | `number?` — defaults to `submission.maxBatchSize` (15); always capped by that setting |
 | `headless` | `boolean?` |
-| `waitForCodeSeconds` | `number?` — as for `submit_application`: 300 by default with a verification mailbox, otherwise 0. Each application polls its own `<artifacts>/<applicationId>.code` |
+| `waitForCodeSeconds` | `number?` — as for `submit_application`: 300 by default with a verification mailbox. Each application polls its own `<artifacts>/<applicationId>.code` |
+| `codeDelivery` | `"wait" \| "handoff"?` — same default as `submit_application` |
+| `captchaWaitSeconds` | `number?`, as for `submit_application` |
 
 Each application that stops short carries `fieldsToAnswer` and its own `nextStep`; answer the `who: "agent"` fields and resubmit it with `submit_application`. Account registration follows the same rule as `submit_application`.
-| `codeDelivery` | `"wait" \| "handoff"?` — same default as `submit_application` |
 
 In hand-off mode an application that hits a verification gate is parked with its
 browser held (item state `awaiting_code`) and the batch moves on to the next one.
