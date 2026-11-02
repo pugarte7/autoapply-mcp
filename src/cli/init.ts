@@ -102,8 +102,8 @@ function main(): void {
       "PDFs, checks every track resolves to a resume, warns about settings written",
       "in the wrong place, and probes each configured board.",
       "",
-      "Submission stays in \"manual\" mode until you change campaign.submission.mode,",
-      "and a non-empty submission.allowedCompanies limits auto mode to the companies it names.",
+      "Submission is automatic: an application you have approved is sent by the agent.",
+      "Listing companies in submission.allowedCompanies limits that to those companies.",
     ].join("\n"),
   );
 }

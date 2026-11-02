@@ -12,6 +12,7 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 |---|---|
 | Application already sent | `already_submitted` |
 | Requested mode exceeds the campaign's configured mode | `mode_not_permitted` |
+| Board has no browser submission (SmartRecruiters, Workable, Recruitee, Apple) | `ats_browser_not_supported` |
 | No recorded human approval | `not_approved` |
 | Content changed since approval | `packet_changed` |
 | A question needing a human is still unanswered | `unresolved_questions` |

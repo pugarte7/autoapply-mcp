@@ -65,7 +65,7 @@ Single-application workflow:
   5. set_application_content - record the cover letter and the answers you wrote
   6. preview_application  - the exact packet and its hash
   7. approve_application  - ask the person to approve that exact packet; they answer, not you
-  8. submit_application   - submit it
+  8. submit_application   - submit it; the server fills the form and presses submit by itself
   9. record_outcome       - track responses
 
 High-volume workflow:
@@ -91,6 +91,13 @@ Rules this server enforces and you must respect:
   - Submission requires an approval the person gave: bound to the current packet hash, to a batch manifest hash, or
     to standing rules the packet matches. Editing a packet voids its own approval.
   - A CAPTCHA is handed to the person with the window kept open. Never solve it or work around it.
+
+Submitting:
+  - You submit by yourself: submit_application and submit_batch default to mode "auto", which fills the form
+    and presses submit. Never offer the person a menu of modes. Use "assisted" (the form is filled in a visible
+    window and they press submit) only if they ask to watch or to submit themselves.
+  - A board the server cannot submit to fails with ats_browser_not_supported. Give the person the apply URL;
+    once they have applied, call record_submission so counts and pacing stay right.
 
 Salaries in Spain come from the tech-pay-spain MCP server at https://spanishtoptechcompanies.com/mcp.
 

@@ -9,14 +9,14 @@ export interface SourceCatalogEntry {
   readonly integration: "board-discovery" | "discovery-only" | "lead-search" | "thread-discovery" | "page-scan";
   readonly access: "public" | "api-key-pro-plus" | "public-page";
   readonly readiness: SourceReadiness;
-  readonly submission: "guarded-browser" | "manual-only" | "not-supported";
+  readonly submission: "guarded-browser" | "apply-by-hand" | "not-supported";
   readonly limitations: readonly string[];
 }
 
 const GUARDED_SUBMISSION =
   "Submission is subject to browser support, explicit campaign domains and company permission, packet approval and all submission guards.";
 const NEW_ATS_LIMITATION =
-  "Discovery only. Manual submission until new browser support and explicit domains and company permission are configured.";
+  "Discovery only. The server cannot submit here (ats_browser_not_supported): the person applies at the posting URL and record_submission counts it.";
 const LEAD_PAGE_LIMITATION =
   "scan_source_page reads one public lead page, not an anonymous bulk API. Client-rendered content may require manual follow-up. Verify employer postings before registering boards.";
 
@@ -54,13 +54,13 @@ const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
   {
     id: "smartrecruiters", label: "SmartRecruiters", url: "https://www.smartrecruiters.com",
     docs: "https://developers.smartrecruiters.com/docs/endpoints",
-    kind: "ats", integration: "discovery-only", access: "public", readiness: "ready", submission: "manual-only",
+    kind: "ats", integration: "discovery-only", access: "public", readiness: "ready", submission: "apply-by-hand",
     limitations: ["Uses public postings for a verified employer identifier, not a global job API.", NEW_ATS_LIMITATION],
   },
   {
     id: "recruitee", label: "Recruitee", url: "https://recruitee.com",
     docs: "https://support.recruitee.com/en/articles/8213076-faq-api",
-    kind: "ats", integration: "discovery-only", access: "public", readiness: "ready", submission: "manual-only",
+    kind: "ats", integration: "discovery-only", access: "public", readiness: "ready", submission: "apply-by-hand",
     limitations: [
       "Uses the public company XML offers feed. JSON requires employer tokens from February 10, 2027; XML is exempt.",
       "Authentication notice: https://docs.recruitee.com/reference/authentication-1",
@@ -70,7 +70,7 @@ const SOURCE_CATALOG: readonly SourceCatalogEntry[] = [
   {
     id: "workable", label: "Workable", url: "https://apply.workable.com",
     docs: "https://workable.readme.io/reference/jobs-1",
-    kind: "ats", integration: "discovery-only", access: "public", readiness: "ready", submission: "manual-only",
+    kind: "ats", integration: "discovery-only", access: "public", readiness: "ready", submission: "apply-by-hand",
     limitations: ["Public hosted careers postings only; the authenticated employer management API is a separate product.", NEW_ATS_LIMITATION],
   },
   {

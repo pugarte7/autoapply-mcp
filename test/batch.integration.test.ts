@@ -8,6 +8,17 @@ import { ASKS_PERSON, person } from "./person.js";
 import { createServer } from "../src/server.js";
 import { resetWorkspaceCache } from "../src/config/load.js";
 import { fixtureResumePath } from "./factories.js";
+import { runApplicationForm } from "../src/submission/browser.js";
+
+// No real board is ever opened: the browser run is replaced by a receipt, so
+// the test sees what the tools do around it.
+vi.mock("../src/submission/browser.js", () => ({
+  runApplicationForm: vi.fn(async () => ({
+    status: "submitted", reason: "test receipt", filledFields: [], unmatchedRequired: [], unusedAnswers: [],
+    screenshotPath: "test-receipt.png", finalUrl: "https://job-boards.greenhouse.io/acme/confirmation",
+    confirmationText: "Your application was received", captchaDetected: false,
+  })),
+}));
 
 /** End-to-end batch flow: prepare many, review, approve as a set, submit. */
 
@@ -70,7 +81,8 @@ const campaign = {
   locations: { allow: ["bay-area"], workplaceTypes: ["onsite", "hybrid", "remote", "unknown"] },
   compensation: { currency: "USD", floors: { US: 200000 }, fx: { USD: 1 }, allowUnknown: true, rejectBelowFloor: true },
   scoring: { thresholds: { tierA: 80, tierB: 70, tierC: 60 } },
-  submission: { mode: "manual", dailyLimit: 20, minDelaySeconds: 0 },
+  // No mode: the default, auto, is what this exercises.
+  submission: { dailyLimit: 20, minDelaySeconds: 0 },
 };
 
 const companies = { version: 1, companies: [{ name: "Acme", ats: "greenhouse", board: "acme", tier: "A" }] };
@@ -199,10 +211,15 @@ describe("batch workflow", () => {
     expect(personShown).toHaveLength(1);
     expect(personShown[0]).toContain("Send these 2 application(s)?");
 
-    const submitted = parse((await callTool("submit_batch", { batchId, mode: "manual" })).text);
-    expect(submitted.results).toHaveLength(2);
-    expect(submitted.manualPackets).toHaveLength(2);
-    expect(submitted.manualPackets[0].applyUrl).toContain("job-boards.greenhouse.io");
+    // No mode passed: submit_batch submits by itself.
+    const submitted = parse((await callTool("submit_batch", { batchId })).text);
+    expect(submitted.mode).toBe("auto");
+    expect(submitted.submitted).toBe(2);
+    expect(submitted.results.map((entry: { outcome: string }) => entry.outcome)).toEqual(["submitted", "submitted"]);
+    expect(submitted.manualPackets).toBeUndefined();
+    const runs = vi.mocked(runApplicationForm).mock.calls;
+    expect(runs).toHaveLength(2);
+    expect(runs.every(([, options]) => options.submit === true)).toBe(true);
 
     const batches = parse((await callTool("list_batches")).text);
     expect(batches.batches[0].batchId).toBe(batchId);
@@ -214,7 +231,7 @@ describe("batch workflow", () => {
     // for it yet and it is still eligible for a fresh batch.
     const prepared = parse((await callTool("prepare_batch", { tiers: ["A", "B"], minCompensation: 205000 })).text);
     expect(prepared.readyToApprove).toBeGreaterThan(0);
-    const result = await callTool("submit_batch", { batchId: prepared.batchId, mode: "manual" });
+    const result = await callTool("submit_batch", { batchId: prepared.batchId });
     expect(result.isError).toBe(true);
     expect(result.text).toContain("batch_not_approved");
   });

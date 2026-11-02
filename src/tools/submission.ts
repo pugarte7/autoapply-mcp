@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { SUBMISSION_MODES, type SubmissionMode } from "../domain/campaign.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   countSubmittedSince,
@@ -12,11 +13,10 @@ import { applicationQuestion, askPerson, packetFor, recordApplicationDecision } 
 import { runApplicationForm } from "../submission/browser.js";
 import { mergeDiscoveredQuestions } from "../submission/discoveredQuestions.js";
 import { checkSubmissionAllowed, startOfDayIso } from "../submission/guards.js";
-import { renderPacketPreview } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
 import { nowIso } from "../util/hash.js";
 import { abortedNextStep, fieldsToAnswer, formRunOptions, waitForCodeSecondsInput, type FieldToAnswer } from "./formRun.js";
-import { handler, ok, okText } from "./helpers.js";
+import { handler, ok } from "./helpers.js";
 
 /**
  * Approval and submission.
@@ -68,10 +68,10 @@ export function registerSubmissionTools(server: McpServer): void {
     {
       title: "Submit an approved application",
       description:
-        "Runs every submission guard, then acts according to mode. 'manual' returns the packet for a person to submit. 'assisted' fills the hosted form in a visible browser and leaves it for a person to submit. 'auto' fills and clicks submit, and is only available when the campaign and company allowlists permit it.",
+        "Runs every submission guard, then acts according to mode. 'auto' (the default) fills the hosted form and clicks submit. 'assisted' fills it in a visible browser and leaves it for the person to submit; use it only when they ask to watch or press submit themselves. Boards without browser submission fail with ats_browser_not_supported: the person applies at the URL and you call record_submission.",
       inputSchema: {
         applicationId: z.string().min(1),
-        mode: z.enum(["manual", "assisted", "auto"]).default("manual"),
+        mode: z.enum(SUBMISSION_MODES).default("auto"),
         headless: z.boolean().optional().describe("Run the browser headless. Ignored in assisted mode."),
         keepOpenSeconds: z
           .number()
@@ -91,9 +91,9 @@ export function registerSubmissionTools(server: McpServer): void {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true },
     },
-    handler(async (args: { applicationId: string; mode?: "manual" | "assisted" | "auto"; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number }) => {
+    handler(async (args: { applicationId: string; mode?: SubmissionMode; headless?: boolean; keepOpenSeconds?: number; verificationCode?: string; waitForCodeSeconds?: number }) => {
       const { workspace, application, job, packet, currentHash } = packetFor(args.applicationId);
-      const mode = args.mode ?? "manual";
+      const mode = args.mode ?? "auto";
       const approval = latestApproval(workspace.db, application.id);
 
       const guard = checkSubmissionAllowed({
@@ -110,21 +110,6 @@ export function registerSubmissionTools(server: McpServer): void {
       if (!guard.allowed) {
         appendEvent(workspace.db, "submission.blocked", application.id, { code: guard.code, mode });
         throw new AppError(guard.code, guard.reason, { applicationId: application.id, mode });
-      }
-
-      if (mode === "manual") {
-        appendEvent(workspace.db, "submission.manual_packet", application.id, { applyUrl: job.applyUrl });
-        return okText(
-          [
-            "Submission guards passed. This packet is ready for you to submit by hand.",
-            "",
-            `Apply URL: ${job.applyUrl}`,
-            "",
-            renderPacketPreview(packet),
-            "",
-            "After submitting, call record_submission with the confirmation reference.",
-          ].join("\n"),
-        );
       }
 
       const result = await runApplicationForm(
@@ -188,8 +173,8 @@ export function registerSubmissionTools(server: McpServer): void {
   server.registerTool(
     "record_submission",
     {
-      title: "Record a manual submission",
-      description: "Marks an application as submitted after a person sent it, so counts, pacing and duplicate checks stay accurate.",
+      title: "Record a submission sent by hand",
+      description: "Marks an application as submitted after the person sent it themselves (for example on a board without browser submission), so counts, pacing and duplicate checks stay accurate.",
       inputSchema: {
         applicationId: z.string().min(1),
         confirmationRef: z.string().optional(),

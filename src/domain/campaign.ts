@@ -63,13 +63,25 @@ export const CompensationPolicySchema = z.object({
   rejectBelowFloor: z.boolean().default(true),
 });
 
+export const SUBMISSION_MODES = ["auto", "assisted"] as const;
+export type SubmissionMode = (typeof SUBMISSION_MODES)[number];
+/** The removed mode, still accepted on load and read as "auto". */
+export const LEGACY_MANUAL_MODE = "manual";
+
 export const SubmissionPolicySchema = z.object({
   /**
-   * manual   - server prepares a packet, a human submits it
-   * assisted - server fills the form, a human reviews and confirms the submit
-   * auto     - server may submit on allowlisted boards with no blocked questions
+   * auto     - the agent fills and submits approved applications by itself
+   * assisted - server fills the form in a visible window, a person presses submit
+   *
+   * A "manual" mode used to return the packet for a person to send. It was
+   * removed so the agent does the work end to end; a config file written
+   * before that still says "manual", and failing to load it would strand the
+   * whole campaign over one word, so it reads as "auto" and `doctor` warns.
+   * Nothing is sent without approval either way: the guards still demand it.
    */
-  mode: z.enum(["manual", "assisted", "auto"]).default("manual"),
+  mode: z
+    .preprocess((value) => (value === LEGACY_MANUAL_MODE ? "auto" : value), z.enum(SUBMISSION_MODES))
+    .default("auto"),
   allowedAtsDomains: z.array(nonEmpty).default([
     "boards.greenhouse.io",
     "job-boards.greenhouse.io",

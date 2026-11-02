@@ -24,9 +24,9 @@ describe("permanent source catalog", () => {
     const source = listSourceCatalog().find((entry) => entry.id === id)!;
     expect(source.kind).toBe("ats");
     expect(source.integration).toBe("discovery-only");
-    expect(source.submission).toBe("manual-only");
-    expect(source.limitations.join(" ")).toMatch(/browser support/i);
-    expect(source.limitations.join(" ")).toMatch(/domains.*company permission/i);
+    expect(source.submission).toBe("apply-by-hand");
+    expect(source.limitations.join(" ")).toContain("ats_browser_not_supported");
+    expect(source.limitations.join(" ")).toContain("record_submission");
   });
 
   it.each(["a16z", "sequoia", "yc", "builtinsf"])("does not advertise %s as an anonymous API", (id) => {

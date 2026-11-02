@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { z } from "zod";
 import type { Workspace } from "../config/load.js";
+import type { SubmissionMode } from "../domain/campaign.js";
 import { getEvaluation } from "../db/repositories/jobs.js";
 import type { DraftAnswer, Job } from "../domain/job.js";
 import { answerOwner, type AnswerOwner } from "../drafting/answerOwner.js";
@@ -21,7 +22,7 @@ import { isWorkdayUrl } from "../submission/workdayFlow.js";
  * Building them in one place keeps the two paths from disagreeing again.
  */
 
-export type RunMode = "manual" | "assisted" | "auto";
+export type RunMode = SubmissionMode;
 
 /**
  * Long enough for a forwarded code to land and be read, short enough that a
