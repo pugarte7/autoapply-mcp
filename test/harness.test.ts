@@ -12,7 +12,6 @@ import { upsertJobs } from "../src/db/repositories/jobs.js";
 import { saveApplication } from "../src/db/repositories/applications.js";
 import { appendEvent } from "../src/db/repositories/events.js";
 import type { Application, DraftAnswer } from "../src/domain/job.js";
-import { classifyAbort, computeLessons, questionKey } from "../src/harness/lessons.js";
 import { profileGaps } from "../src/harness/agenda.js";
 import { dailyApplyText, onboardText, resolveBlockersText } from "../src/harness/prompts.js";
 import { makeCampaign, makeJob, makeProfile } from "./factories.js";
@@ -31,6 +30,8 @@ function answer(label: string, overrides: Partial<DraftAnswer> = {}): DraftAnswe
     ...overrides,
   };
 }
+
+const questionKey = (label: string) => label.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
 
 function application(id: string, jobId: string, overrides: Partial<Application> = {}): Application {
   return {
@@ -80,57 +81,12 @@ function seed(db: Db): void {
   appendEvent(db, "submission.submitted", "app_3", { mode: "auto" });
 }
 
-describe("lessons", () => {
-  let db: Db;
-  beforeEach(() => {
-    db = openDatabase(":memory:");
-    seed(db);
-  });
-
-  it("sorts abort reasons into the kinds an agent handles differently", () => {
-    expect(classifyAbort("anti-bot challenge activated after submit")).toBe("captcha");
-    expect(classifyAbort("verification code was entered but the submission was not confirmed")).toBe("verification");
-    expect(classifyAbort("required field(s) could not be filled: Phone")).toBe("unfilled");
-    expect(classifyAbort("the employer refused the submission")).toBe("refused");
-    expect(classifyAbort("no submit control found on the page")).toBe("other");
-  });
-
-  it("counts outcomes per ATS from the audit log", () => {
-    const lessons = computeLessons(db);
-    const greenhouse = lessons.boards.find((entry) => entry.ats === "greenhouse");
-    const workday = lessons.boards.find((entry) => entry.ats === "workday");
-    expect(greenhouse).toMatchObject({ attempts: 3, outcomes: { captcha: 1, verification: 1, guard: 1, submitted: 0 } });
-    expect(workday).toMatchObject({ attempts: 1, outcomes: { submitted: 1 } });
-  });
-
-  it("merges the same question across applications and keeps no answers", () => {
-    const lessons = computeLessons(db);
-    const sponsorship = lessons.questions.find((question) => question.label.startsWith("Will you require"));
-    expect(sponsorship).toMatchObject({ blockingNow: 2, answeredByPerson: 0, ats: ["greenhouse"] });
-    expect(lessons.questions.find((question) => question.label === "Desired salary")).toMatchObject({ answeredByPerson: 1 });
-    // A blank optional field never blocks, so it is not a lesson.
-    expect(lessons.questions.some((question) => question.label === "Optional nickname")).toBe(false);
-    expect(JSON.stringify(lessons)).not.toContain("Prefer to discuss");
-  });
-
-  it("turns counts into advice that names a tool", () => {
-    const withoutInbox = computeLessons(db).advice.join("\n");
-    expect(withoutInbox).toContain("CAPTCHA");
-    expect(withoutInbox).toContain("provide_verification_code");
-    expect(withoutInbox).toContain("remember_answer");
-    const withInbox = computeLessons(db, { verificationInboxConfigured: true }).advice.join("\n");
-    expect(withInbox).not.toContain("provide_verification_code");
-  });
-});
-
 describe("profile gaps", () => {
   it("lists only what is missing", () => {
     const complete = makeProfile({ preferences: { noticePeriod: "1 month" } });
-    const gaps = profileGaps(complete, true).map((gap) => gap.field);
+    const gaps = profileGaps(complete).map((gap) => gap.field);
     expect(gaps).not.toContain("identity.phone");
     expect(gaps).not.toContain("preferences.noticePeriod");
-    expect(gaps).not.toContain("verification mailbox");
-    expect(profileGaps(complete, false).map((gap) => gap.field)).toContain("verification mailbox");
   });
 });
 
@@ -138,20 +94,19 @@ describe("prompt texts", () => {
   it("onboard asks for everything in one message with the mailbox wording", () => {
     const text = onboardText();
     expect(text).toContain("ONE message");
-    expect(text).toContain(
-      "We need an email address to receive the verification codes some boards send. You can connect it to me and I do everything automatically, or you pass me the codes by hand.",
-    );
+    expect(text).toContain("If you connect your mailbox to me I read it myself; otherwise you pass me the code when one arrives.");
     for (const tool of ["setup_profile", "update_campaign", "remember_answer", "list_rules", "approve_rules"]) {
       expect(text).toContain(tool);
     }
-    expect(text).not.toMatch(/app password|manual mode/i);
+    expect(text).not.toMatch(/app password|IMAP|manual mode/i);
   });
 
-  it("never offers a menu of modes", () => {
+  it("has the agent send applications with its own browser", () => {
     for (const text of [onboardText(), dailyApplyText(), resolveBlockersText()]) {
-      expect(text).not.toMatch(/manual mode|choose a mode|which mode/i);
+      expect(text).not.toMatch(/assisted mode|provide_verification_code|lessons/i);
     }
-    expect(dailyApplyText()).toContain("do not offer a choice of modes");
+    expect(dailyApplyText()).toContain("with your own browser");
+    expect(dailyApplyText()).toContain("record_submission");
   });
 
   it("fills arguments in and ignores blank ones", () => {
@@ -205,16 +160,14 @@ describe("harness over MCP", () => {
     expect(onboard.messages[0]?.content.type).toBe("text");
   });
 
-  it("serves the agenda and lessons as resources", async () => {
+  it("serves the agenda as a resource", async () => {
     const { resources } = await client.listResources();
-    expect(resources.map((resource) => resource.uri).sort()).toEqual(["autoapply://agenda", "autoapply://lessons"]);
+    expect(resources.map((resource) => resource.uri)).toEqual(["autoapply://agenda"]);
 
     const agenda = JSON.parse(String((await client.readResource({ uri: "autoapply://agenda" })).contents[0]?.text));
     expect(agenda.needsHuman.map((entry: { applicationId: string }) => entry.applicationId).sort()).toEqual(["app_1", "app_2"]);
     expect(agenda.needsHuman.find((entry: { applicationId: string }) => entry.applicationId === "app_1").lastNote).toContain("anti-bot");
 
-    const lessons = JSON.parse(String((await client.readResource({ uri: "autoapply://lessons" })).contents[0]?.text));
-    expect(lessons.boards.length).toBe(2);
   });
 });
 
@@ -286,10 +239,12 @@ describe("skills/autoapply/SKILL.md", () => {
     for (const value of Object.values(fields.metadata as Record<string, string>)) expect(typeof value).toBe("string");
   });
 
-  it("stays short enough to load whole and keeps the mailbox wording", () => {
+  it("stays short enough to load whole and has the agent send with its browser", () => {
     const body = match![2]!;
     expect(body.split("\n").length).toBeLessThan(500);
-    expect(body).toContain("You can connect it to me and I do everything");
+    expect(body).toContain("If you connect your mailbox to me I read it myself");
+    expect(body).toContain("record_submission");
+    expect(body).not.toMatch(/assisted|auto mode|provide_verification_code|lessons/);
     expect(body).toMatch(/## When to Use[\s\S]*## Procedure[\s\S]*## Pitfalls[\s\S]*## Verification/);
   });
 });

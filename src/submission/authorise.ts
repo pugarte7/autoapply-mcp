@@ -1,4 +1,3 @@
-import type { SubmissionMode } from "../domain/campaign.js";
 import type { Workspace } from "../config/load.js";
 import { countSubmittedSince, lastSubmissionAt, latestApproval } from "../db/repositories/applications.js";
 import { applicationCountsByCompany, getEvaluation } from "../db/repositories/jobs.js";
@@ -9,14 +8,11 @@ import type { StandingCheck } from "./standingRules.js";
 
 /**
  * Builds the guard input from the database, the same way for every caller:
- * submit_application, submit_batch and the daily run. Each used to assemble it
+ * submit_application and submit_batch. Each used to assemble it
  * inline, which is how a new input could reach one path and not another.
  */
 
-/** Submissions each rule set authorised in this run, keyed by rules id. */
-export type RunLedger = Map<string, number>;
-
-export function standingCheckFor(workspace: Workspace, jobId: string, ledger: RunLedger, now = new Date()): StandingCheck {
+export function standingCheckFor(workspace: Workspace, jobId: string, now = new Date()): StandingCheck {
   const since = startOfDayIso(now);
   return {
     evaluation: getEvaluation(workspace.db, jobId),
@@ -24,7 +20,6 @@ export function standingCheckFor(workspace: Workspace, jobId: string, ledger: Ru
       id: record.id,
       rules: record.rules,
       usedToday: countRulesUsesSince(workspace.db, record.id, since),
-      usedThisRun: ledger.get(record.id) ?? 0,
     })),
   };
 }
@@ -34,8 +29,6 @@ export function submissionGuard(
   application: Application,
   job: Job,
   currentHash: string,
-  requestedMode: SubmissionMode,
-  ledger: RunLedger = new Map(),
 ): GuardResult {
   return checkSubmissionAllowed({
     application: { ...application, packetHash: currentHash },
@@ -45,16 +38,14 @@ export function submissionGuard(
     submittedToday: countSubmittedSince(workspace.db, startOfDayIso()),
     companyApplicationCount: applicationCountsByCompany(workspace.db).get(job.companyName.toLowerCase()) ?? 0,
     lastSubmissionAt: lastSubmissionAt(workspace.db),
-    requestedMode,
-    standing: standingCheckFor(workspace, job.id, ledger),
+    standing: standingCheckFor(workspace, job.id),
   });
 }
 
 /** Counts a sent application against the rule set that authorised it. */
-export function noteRulesUse(workspace: Workspace, applicationId: string, guard: GuardResult, ledger: RunLedger): void {
+export function noteRulesUse(workspace: Workspace, applicationId: string, guard: GuardResult): void {
   if (!guard.rulesId) return;
   recordRulesUse(workspace.db, guard.rulesId, applicationId);
-  ledger.set(guard.rulesId, (ledger.get(guard.rulesId) ?? 0) + 1);
 }
 
 /** What audit events carry about who authorised a submission. */

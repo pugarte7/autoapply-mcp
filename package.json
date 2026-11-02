@@ -1,7 +1,7 @@
 {
   "name": "autoapply-mcp",
   "version": "0.2.0",
-  "description": "AI job application agent: an MCP server that lets Claude, Cursor or Codex find jobs and apply on Greenhouse, Lever, Ashby and Workday, with hard safety gates and human approval.",
+  "description": "AI job application agent: an MCP server that finds jobs on Greenhouse, Lever, Ashby and Workday and drafts every application, which your agent sends with its own browser after you approve.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -60,7 +60,6 @@
     "start": "node dist/index.js",
     "doctor": "node dist/cli/doctor.js",
     "approve": "node dist/cli/approve.js",
-    "daily": "node dist/cli/daily.js",
     "init": "node dist/cli/init.js",
     "prepublishOnly": "npm run build && npm test",
     "eval": "npm run build && node evals/run.ts"
@@ -73,21 +72,7 @@
   "devDependencies": {
     "@types/node": "^24.10.1",
     "@vitest/coverage-v8": "^4.1.10",
-    "imapflow": "^1.7.0",
-    "playwright": "^1.62.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
-  },
-  "peerDependencies": {
-    "imapflow": "^1.7.0",
-    "playwright": "^1.62.0"
-  },
-  "peerDependenciesMeta": {
-    "imapflow": {
-      "optional": true
-    },
-    "playwright": {
-      "optional": true
-    }
   }
 }

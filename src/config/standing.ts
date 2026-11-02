@@ -211,25 +211,8 @@ export function profileStandingChanges(
   return changes;
 }
 
-// Auto is the default since manual mode was removed, so a new campaign in auto
-// raises nothing; only going from assisted back to auto asks the person.
-const MODE_RANK: Record<Campaign["submission"]["mode"], number> = { assisted: 0, auto: 1 };
-
 export function campaignStandingChanges(before: Campaign | null, after: Campaign): StandingChange[] {
   const changes: StandingChange[] = [];
-  const modeBefore = before?.submission.mode ?? "auto";
-  if (MODE_RANK[after.submission.mode] > MODE_RANK[modeBefore]) {
-    changes.push({
-      file: "campaign",
-      pointer: ["submission", "mode"],
-      value: after.submission.mode,
-      safe: modeBefore,
-      summary:
-        after.submission.mode === "auto"
-          ? "Let the server submit applications on allowlisted boards on its own once they are approved (submission.mode auto)."
-          : "Let the server fill application forms in the browser for you to review and confirm (submission.mode assisted).",
-    });
-  }
   const blockedBefore = before?.submission.blockedQuestionCategories ?? defaultBlockedCategories();
   const removed = blockedBefore.filter((category) => !after.submission.blockedQuestionCategories.includes(category));
   if (removed.length > 0) {

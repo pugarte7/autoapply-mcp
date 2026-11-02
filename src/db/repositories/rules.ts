@@ -73,12 +73,15 @@ export function markRulesRevoked(db: Db, id: string): void {
   db.prepare("UPDATE standing_rules SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL").run(nowIso(), id);
 }
 
+/**
+ * Counted once per application: the same packet can be handed to the agent
+ * again (it skipped it, or the browser failed) without using up the rules.
+ */
 export function recordRulesUse(db: Db, rulesId: string, applicationId: string): void {
-  db.prepare("INSERT INTO standing_rule_uses (rules_id, application_id, used_at) VALUES (?,?,?)").run(
-    rulesId,
-    applicationId,
-    nowIso(),
-  );
+  db.prepare(
+    `INSERT INTO standing_rule_uses (rules_id, application_id, used_at)
+     SELECT ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM standing_rule_uses WHERE rules_id = ? AND application_id = ?)`,
+  ).run(rulesId, applicationId, nowIso(), rulesId, applicationId);
 }
 
 export function countRulesUsesSince(db: Db, rulesId: string, isoTimestamp: string): number {

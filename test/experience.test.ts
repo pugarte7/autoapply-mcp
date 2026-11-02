@@ -1,19 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { resolveExperience } from "../src/drafting/experience.js";
-import { experienceResolverFor } from "../src/submission/experienceResolver.js";
-import {
-  buildFillPlan,
-  fallbackAnswersForFields,
-  optionSearchCandidates,
-  pickOptionIndex,
-} from "../src/submission/formFields.js";
-import type { FieldDescriptor } from "../src/submission/formFields.js";
 import type { DraftAnswer } from "../src/domain/job.js";
 import { makeProfile } from "./factories.js";
-
-function field(label: string, overrides: Partial<FieldDescriptor> = {}): FieldDescriptor {
-  return { selectorIndex: 0, label, type: "text", name: "", required: true, ...overrides };
-}
 
 function answer(label: string, value: string): DraftAnswer {
   return {
@@ -190,130 +178,6 @@ describe("resolveExperience", () => {
   });
 });
 
-// Zuora's employment block left a current role's end date unanswered, so the
-// plan reported "End date month*" and "End date year*" as required gaps even
-// though ticking "Current role" removes them, and on a form that numbered its
-// blocks differently the graduation date could have filled them instead.
-describe("a current role's end date at fill time", () => {
-  const education = () => ({ answer: "2020", citation: "education[0].end", category: "education", authorized: true });
-
-  it("is a deliberate blank rather than a missing answer", () => {
-    const resolver = experienceResolverFor(profile);
-    expect(resolver("End date year*")).toMatchObject({ answer: "", citation: "experience[0].end", authorized: true });
-    const fields = [
-      field("End date month*", { selectorIndex: 12, role: "combobox" }),
-      field("End date year*", { selectorIndex: 13 }),
-    ];
-    const plan = buildFillPlan(fields, fallbackAnswersForFields(fields, [], [], education, undefined, resolver));
-    expect(plan.toFill).toEqual([]);
-    expect(plan.unmatchedRequired).toEqual([]);
-  });
-
-  it("leaves a role that has ended to its real end date", () => {
-    const past = makeProfile({
-      experience: [{ company: "Phemi", title: "Intern", start: "2018-05", end: "2018-08", highlights: [] }],
-    });
-    expect(experienceResolverFor(past)("End date year")?.answer).toBe("2018");
-  });
-});
-
-describe("employment block fill", () => {
-  it("fills every control in the block, including both halves of the start date", () => {
-    const fields = [
-      field("Company name", { selectorIndex: 1 }),
-      field("Title", { selectorIndex: 2 }),
-      field("Start date month", { selectorIndex: 3, type: "select" }),
-      field("Start date year", { selectorIndex: 4 }),
-    ];
-    const derived = fallbackAnswersForFields(fields, [], [], undefined, undefined, experienceResolverFor(profile));
-    expect(derived.map((entry) => entry.answer)).toEqual([
-      "Acme",
-      "Software Engineer III - Security",
-      "February",
-      "2021",
-    ]);
-  });
-
-  /**
-   * The two ends of a period differ by one word and sit next to each other, so
-   * similarity let the start month fill the end month - which on a past
-   * position states the job began and ended in the same month.
-   */
-  it("does not let a start date fill an end date", () => {
-    const fields = [
-      field("Start date month", { selectorIndex: 3, type: "select" }),
-      field("End date month", { selectorIndex: 5, type: "select" }),
-    ];
-    const derived = fallbackAnswersForFields(fields, [], [], undefined, undefined, experienceResolverFor(profile));
-    const plan = buildFillPlan(fields, derived);
-    const endDate = plan.toFill.find((match) => match.field.label === "End date month");
-    expect(endDate).toBeUndefined();
-  });
-
-  it("leaves a control alone when the packet already answered it", () => {    const fields = [field("Company name", { selectorIndex: 1 })];
-    const derived = fallbackAnswersForFields(
-      fields,
-      [answer("Company name", "Stated already")],
-      [],
-      undefined,
-      undefined,
-      experienceResolverFor(profile),
-    );
-    expect(derived).toEqual([]);
-  });
-});
-
-/**
- * Lyft's relocation question is a react-select with three sentences and no
- * "Yes", so a stored decision reached none of them.
- */
-describe("relocation options", () => {
-  const LYFT_LABEL =
-    "This position is required to work out of a Lyft Office in Toronto, if you do not reside within the country and within commutable proximity to the office, are you open to relocating?";
-  const LYFT_OPTIONS = [
-    "I am willing to relocate before starting employment.",
-    "I am not willing to relocate before starting employment.",
-    "I already reside within commutable distance to Toronto and am able to work at an On-site Office.",
-  ];
-
-  it("reaches the sentence from a stored yes, and never its negation", () => {
-    const candidates = optionSearchCandidates(field(LYFT_LABEL, { type: "select" }), answer(LYFT_LABEL, "Yes"));
-    expect(pickOptionIndex(LYFT_OPTIONS, candidates)).toBe(0);
-  });
-
-  it("reaches the negated sentence from a stored no", () => {
-    const candidates = optionSearchCandidates(field(LYFT_LABEL, { type: "select" }), answer(LYFT_LABEL, "No"));
-    expect(pickOptionIndex(LYFT_OPTIONS, candidates)).toBe(1);
-  });
-
-  /**
-   * "I already reside within commutable distance to Toronto" is a statement
-   * about where the candidate lives, which a yes to relocating does not make.
-   */
-  it("never claims the candidate already lives near the office", () => {
-    const candidates = optionSearchCandidates(field(LYFT_LABEL, { type: "select" }), answer(LYFT_LABEL, "Yes"));
-    expect(pickOptionIndex([LYFT_OPTIONS[2]!], candidates)).toBe(-1);
-  });
-});
-
-describe("month options", () => {  /** Boards write the same month as "February", "Feb", "02" and "2". */
-  it("offers every spelling of the one month", () => {
-    const candidates = optionSearchCandidates(
-      field("Start date month", { type: "select" }),
-      answer("Start date month", "February"),
-    );
-    expect(candidates).toEqual(["February", "feb", "02", "2"]);
-  });
-
-  it("leaves other values alone", () => {
-    const candidates = optionSearchCandidates(
-      field("Current company", {}),
-      answer("Current company", "Hooli"),
-    );
-    expect(candidates).toEqual(["Hooli"]);
-  });
-});
-
 /**
  * Omnissa's Workday work-history block requires a "Role Description" text box
  * and would not advance past it. The profile's highlights for the job are the
@@ -322,18 +186,6 @@ describe("month options", () => {  /** Boards write the same month as "February"
 describe("the role description in a work-history block", () => {
   it("is the most recent job's highlights", () => {
     expect(resolveExperience("Role Description*", profile)?.answer).toBe("Built guardrails");
-  });
-
-  it("is filled on a live text box", () => {
-    const derived = fallbackAnswersForFields(
-      [field("Role Description*", { type: "textarea", name: "roleDescription" })],
-      [],
-      [],
-      undefined,
-      undefined,
-      experienceResolverFor(profile),
-    );
-    expect(derived[0]?.answer).toBe("Built guardrails");
   });
 
   it("is nothing when the profile records no highlights", () => {
@@ -355,24 +207,6 @@ describe("a skills question", () => {
     expect(resolveExperience("Type to Add Skills*", withWorking)?.answer).toBe(
       "Python, Open Policy Agent, Azure, threat modeling",
     );
-  });
-
-  it("is searched one skill at a time on a picker", () => {
-    const derived = fallbackAnswersForFields(
-      [field("Type to Add Skills*", { name: "skills" })],
-      [],
-      [],
-      undefined,
-      undefined,
-      experienceResolverFor(profile),
-    );
-    expect(derived[0]?.answer).toBe("Python, Open Policy Agent, Azure, threat modeling");
-    expect(optionSearchCandidates(field("Type to Add Skills*", { role: "combobox" }), derived[0]!)).toEqual([
-      "Python",
-      "Open Policy Agent",
-      "Azure",
-      "threat modeling",
-    ]);
   });
 
   it("does not take over a question that only mentions skills", () => {

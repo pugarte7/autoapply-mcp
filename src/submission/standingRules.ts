@@ -31,7 +31,6 @@ export const StandingRulesSchema = z
     tracks: z.array(name).default([]),
     atsKinds: z.array(AtsKindSchema).default([]),
     maxPerDay: z.number().int().positive().max(200),
-    maxPerRun: z.number().int().positive().max(200),
     /** Cover letters and essays the agent wrote from profile facts. */
     allowAgentDraftedText: z.boolean().default(false),
     expiresAt: z.string().datetime({ offset: true }).optional(),
@@ -68,7 +67,6 @@ export function normalizeRules(input: unknown, now = new Date()): StandingRules 
     tracks: sorted(rules.tracks),
     atsKinds: sorted(rules.atsKinds) as StandingRules["atsKinds"],
     maxPerDay: rules.maxPerDay,
-    maxPerRun: rules.maxPerRun,
     allowAgentDraftedText: rules.allowAgentDraftedText,
     expiresAt: expires.toISOString(),
   };
@@ -93,7 +91,7 @@ export function rulesSummary(rules: StandingRules, rulesId: string, hash: string
     `Never these:       ${any(rules.excludeCompanies, "none beyond the campaign exclusions")}`,
     `Tracks:            ${any(rules.tracks, "every campaign track")}`,
     `Boards:            ${any(rules.atsKinds, "every supported board")}`,
-    `At most:           ${rules.maxPerDay} a day, ${rules.maxPerRun} per run`,
+    `At most:           ${rules.maxPerDay} a day`,
     `Agent-written text: ${
       rules.allowAgentDraftedText
         ? "allowed: cover letters and essays the agent writes from your profile facts are sent unseen"
@@ -186,7 +184,6 @@ export type ActiveRules = {
   id: string;
   rules: StandingRules;
   usedToday: number;
-  usedThisRun: number;
 };
 
 export type StandingCheck = {
@@ -262,10 +259,6 @@ export function authoriseByRules(
     }
     if (entry.usedToday >= entry.rules.maxPerDay) {
       capped ??= { allowed: false, code: "rules_daily_cap_reached", reason: `rules ${entry.id} allow ${entry.rules.maxPerDay} a day`, deferrable: true };
-      continue;
-    }
-    if (entry.usedThisRun >= entry.rules.maxPerRun) {
-      capped ??= { allowed: false, code: "rules_run_cap_reached", reason: `rules ${entry.id} allow ${entry.rules.maxPerRun} per run`, deferrable: true };
       continue;
     }
     return { allowed: true, rulesId: entry.id };

@@ -59,7 +59,6 @@ const baseInput = {
   approval,
   submittedToday: 0,
   lastSubmissionAt: null,
-  requestedMode: "auto" as const,
 };
 
 describe("checkUrlAllowed", () => {
@@ -76,17 +75,16 @@ describe("checkUrlAllowed", () => {
 });
 
 describe("checkSubmissionAllowed", () => {
-  it("allows a fully approved auto submission under the default campaign", () => {
-    expect(campaign.submission.mode).toBe("auto");
+  it("allows a fully approved submission under the default campaign", () => {
     expect(checkSubmissionAllowed(baseInput).allowed).toBe(true);
   });
 
-  it.each(["auto", "assisted"] as const)("still refuses %s without an approval record", (requestedMode) => {
-    const result = checkSubmissionAllowed({ ...baseInput, approval: null, requestedMode });
+  it("refuses without an approval record", () => {
+    const result = checkSubmissionAllowed({ ...baseInput, approval: null });
     expect(result.code).toBe("not_approved");
   });
 
-  it("refuses an approval that was declined, in auto mode too", () => {
+  it("refuses an approval that was declined", () => {
     const result = checkSubmissionAllowed({ ...baseInput, approval: { ...approval, decision: "rejected" } });
     expect(result.code).toBe("not_approved");
   });
@@ -140,39 +138,14 @@ describe("checkSubmissionAllowed", () => {
     expect(result.code).toBe("ok");
   });
 
-  it("refuses a mode stronger than the campaign allows", () => {
-    const assisted = makeCampaign({ submission: { mode: "assisted" } });
-    const result = checkSubmissionAllowed({ ...baseInput, campaign: assisted, requestedMode: "auto" });
-    expect(result.code).toBe("mode_not_permitted");
+  it.each(["smartrecruiters", "workable", "recruitee"] as const)("hands over %s postings like any other board", (ats) => {
+    const result = checkSubmissionAllowed({
+      ...baseInput,
+      job: makeJob({ ats, applyUrl: "https://apply.example.com/job/1" }),
+      campaign: makeCampaign({ submission: { allowedAtsDomains: ["apply.example.com"] } }),
+    });
+    expect(result.allowed).toBe(true);
   });
-
-  it("lets a call ask for assisted under an auto campaign", () => {
-    // The person may want to watch or press submit themselves; assisted is the
-    // lesser mode, so an auto ceiling permits it.
-    expect(checkSubmissionAllowed({ ...baseInput, requestedMode: "assisted" }).allowed).toBe(true);
-  });
-
-  it.each(["smartrecruiters", "workable", "recruitee", "apple"] as const)(
-    "refuses %s, which has no browser submission, and points at record_submission",
-    (ats) => {
-      const input = {
-        ...baseInput,
-        job: makeJob({ ats, applyUrl: "https://apply.example.com/job/1" }),
-        campaign: makeCampaign({
-          submission: { mode: "auto", allowedAtsDomains: ["apply.example.com"], allowedCompanies: [job.companyName] },
-        }),
-      };
-      for (const requestedMode of ["auto", "assisted"] as const) {
-        const result = checkSubmissionAllowed({ ...input, requestedMode });
-        expect(result.code).toBe("ats_browser_not_supported");
-        expect(result.reason).toContain("https://apply.example.com/job/1");
-        expect(result.reason).toContain("record_submission");
-      }
-      // Said before approval is looked at, so the agent does not chase one for
-      // a packet that could never be sent.
-      expect(checkSubmissionAllowed({ ...input, approval: null }).code).toBe("ats_browser_not_supported");
-    },
-  );
 
   it("refuses destinations off the allowlist", () => {
     const result = checkSubmissionAllowed({
@@ -254,22 +227,15 @@ describe("checkSubmissionAllowed", () => {
     expect(result.code).toBe("already_submitted");
   });
 
-  it("restricts auto mode to allowlisted companies", () => {
-    const autoCampaign = makeCampaign({
-      submission: { mode: "auto", allowedCompanies: ["Other Corp"] },
-    });
-    const result = checkSubmissionAllowed({ ...baseInput, campaign: autoCampaign, requestedMode: "auto" });
+  it("restricts submission to allowlisted companies when any are named", () => {
+    const narrowed = makeCampaign({ submission: { allowedCompanies: ["Other Corp"] } });
+    const result = checkSubmissionAllowed({ ...baseInput, campaign: narrowed });
     expect(result.code).toBe("company_not_allowlisted");
   });
 
-  it("does not restrict auto mode when allowedCompanies is empty", () => {
+  it("does not restrict submission when allowedCompanies is empty", () => {
     expect(campaign.submission.allowedCompanies).toEqual([]);
-    expect(checkSubmissionAllowed({ ...baseInput, requestedMode: "auto" }).allowed).toBe(true);
-  });
-
-  it("does not restrict assisted mode to allowlisted companies", () => {
-    const narrowed = makeCampaign({ submission: { allowedCompanies: ["Other Corp"] } });
-    expect(checkSubmissionAllowed({ ...baseInput, campaign: narrowed, requestedMode: "assisted" }).allowed).toBe(true);
+    expect(checkSubmissionAllowed(baseInput).allowed).toBe(true);
   });
 });
 

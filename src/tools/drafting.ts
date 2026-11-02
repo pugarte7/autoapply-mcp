@@ -7,6 +7,7 @@ import { applicationCountsByCompany, getEvaluation, getJob } from "../db/reposit
 import type { Application, DraftAnswer } from "../domain/job.js";
 import { unresolvedRequired, type FormQuestion } from "../drafting/answers.js";
 import { prepareApplicationFor } from "../drafting/prepare.js";
+import { discoveredQuestionKey } from "../drafting/discovered.js";
 import type { AnswerOwner } from "../drafting/answerOwner.js";
 import { computePacketHash, renderPacketPreview, type SubmissionPacket } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
@@ -133,14 +134,20 @@ export function registerDraftingTools(server: McpServer): void {
     {
       title: "Set cover letter and outstanding answers",
       description:
-        "Records a cover letter and answers to questions the policy engine would not fill on its own. Changing content invalidates any prior approval, because approval is bound to the packet hash.",
+        "Records a cover letter and answers to questions the policy engine would not fill on its own. A question the live form asks that the packet lacks is added by its label. Changing content invalidates any prior approval, because approval is bound to the packet hash.",
       inputSchema: {
         applicationId: z.string().min(1),
         coverLetter: z.string().optional(),
         answers: z
           .array(
             z.object({
-              questionKey: z.string().min(1),
+              questionKey: z.string().min(1).optional().describe("Key from prepare_application."),
+              label: z
+                .string()
+                .min(1)
+                .optional()
+                .describe("Instead of questionKey: the label of a question read off the live form that the packet lacks."),
+              required: z.boolean().optional().describe("With label: whether the form marks it required. Default true."),
               answer: z.string(),
               remember: z
                 .boolean()
@@ -153,7 +160,7 @@ export function registerDraftingTools(server: McpServer): void {
             }),
           )
           .optional()
-          .describe("Answers keyed by questionKey from prepare_application."),
+          .describe("Answers keyed by questionKey from prepare_application, or by label for a question the packet lacks."),
         notes: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
@@ -161,7 +168,7 @@ export function registerDraftingTools(server: McpServer): void {
     handler(async (args: {
       applicationId: string;
       coverLetter?: string;
-      answers?: Array<{ questionKey: string; answer: string; remember?: boolean; statedByPerson?: boolean }>;
+      answers?: Array<{ questionKey?: string; label?: string; required?: boolean; answer: string; remember?: boolean; statedByPerson?: boolean }>;
       notes?: string;
     }) => {
       const workspace = getWorkspace();
@@ -172,10 +179,11 @@ export function registerDraftingTools(server: McpServer): void {
       const job = getJob(workspace.db, application.jobId);
       if (!job) throw new AppError("job_not_found", `job ${application.jobId} is missing`);
 
-      const updates = new Map((args.answers ?? []).map((entry) => [entry.questionKey, entry.answer]));
-      const unknownKeys = [...updates.keys()].filter(
-        (key) => !application.answers.some((answer) => answer.questionKey === key),
-      );
+      const entries = (args.answers ?? []).map((entry) => ({ ...entry, key: keyFor(application, entry) }));
+      const updates = new Map(entries.map((entry) => [entry.key, entry.answer]));
+      const unknownKeys = entries
+        .filter((entry) => !entry.label && !application.answers.some((answer) => answer.questionKey === entry.key))
+        .map((entry) => entry.key);
       if (unknownKeys.length > 0) {
         throw new AppError("unknown_question_key", `unknown questionKey(s): ${unknownKeys.join(", ")}`);
       }
@@ -187,6 +195,20 @@ export function registerDraftingTools(server: McpServer): void {
             { ...answer, answer: updates.get(answer.questionKey)!, source: "agent", citation: "provided via set_application_content" }
           : answer,
       );
+      for (const entry of entries) {
+        if (answers.some((answer) => answer.questionKey === entry.key)) continue;
+        answers.push({
+          questionKey: entry.key,
+          label: entry.label!,
+          answer: entry.answer,
+          source: "agent",
+          citation: "read off the live form",
+          requiresHuman: entry.answer.trim().length === 0,
+          required: entry.required ?? true,
+          category: "employer-specific",
+          guidance: "",
+        });
+      }
 
       const updated: Application = {
         ...application,
@@ -219,13 +241,13 @@ export function registerDraftingTools(server: McpServer): void {
 
       // Remembered after this application is saved, so the re-draft that
       // follows sees its answers as given and leaves them alone.
-      const toRemember = (args.answers ?? []).filter((entry) => entry.remember === true);
+      const toRemember = entries.filter((entry) => entry.remember === true);
       const remembered =
         toRemember.length > 0
           ? await rememberAnswers(
               server,
               toRemember.map((entry) => ({
-                label: application.answers.find((answer) => answer.questionKey === entry.questionKey)!.label,
+                label: answers.find((answer) => answer.questionKey === entry.key)!.label,
                 answer: entry.answer,
                 statedByPerson: entry.statedByPerson === true,
               })),
@@ -286,4 +308,13 @@ export function registerDraftingTools(server: McpServer): void {
       );
     }),
   );
+}
+
+/** A label names an existing question when one has it, otherwise a new one read off the live form. */
+function keyFor(application: Application, entry: { questionKey?: string; label?: string }): string {
+  if (entry.questionKey) return entry.questionKey;
+  if (!entry.label) throw new AppError("question_required", "each answer needs a questionKey or a label");
+  const label = entry.label.trim().toLowerCase();
+  const existing = application.answers.find((answer) => answer.label.trim().toLowerCase() === label);
+  return existing?.questionKey ?? discoveredQuestionKey(entry.label);
 }

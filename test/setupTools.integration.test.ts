@@ -171,22 +171,16 @@ describe("setup_profile", () => {
 });
 
 describe("update_campaign", () => {
-  it("creates an auto campaign without asking, and asks before going from assisted to auto", async () => {
+  it("creates a campaign without asking", async () => {
     const { shown } = await start({ files: { profile: makeProfile() }, answer: () => false });
     const campaign = JSON.parse(JSON.stringify(makeCampaign())) as Record<string, any>;
     delete campaign.submission;
 
-    const created = (await call("update_campaign", { ...campaign, submission: { mode: "auto", dailyLimit: 10 } })).json();
+    const created = (await call("update_campaign", { ...campaign, submission: { dailyLimit: 10 } })).json();
     expect(created.saved).toBe("file");
     expect(shown).toHaveLength(0);
-    expect(readJson("campaign.json").submission).toEqual({ mode: "auto", dailyLimit: 10 });
-
-    await call("update_campaign", { submission: { mode: "assisted" } });
-    expect(shown).toHaveLength(0);
-    const raised = (await call("update_campaign", { submission: { mode: "auto" } })).json();
-    expect(shown[0]).toMatch(/submit applications/);
-    expect(readJson("campaign.json").submission.mode).toBe("assisted");
-    expect(raised.workspace.loaded).toBe(true);
+    expect(readJson("campaign.json").submission).toEqual({ dailyLimit: 10 });
+    expect(created.workspace.loaded).toBe(true);
   });
 
   it("removes a blocked question category once the person confirms", async () => {

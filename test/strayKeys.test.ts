@@ -122,11 +122,10 @@ describe("shipped example configuration", () => {
     for (const track of campaign.tracks) expect(resumeIds.has(track.resumeId)).toBe(true);
   });
 
-  it("ships submitting by itself, open to any company that passes the gates", () => {
-    // Approval is what keeps a fresh install from contacting an employer; the
-    // mode and an empty company list are not meant to.
+  it("ships open to any company that passes the gates", () => {
+    // Approval is what keeps a fresh install from contacting an employer; an
+    // empty company list is not meant to.
     const campaign = CampaignSchema.parse(readExample("examples/campaign.example.json"));
-    expect(campaign.submission.mode).toBe("auto");
     expect(campaign.submission.allowedCompanies).toEqual([]);
   });
 });

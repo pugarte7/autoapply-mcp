@@ -41,7 +41,6 @@ function storedBlank(root: unknown, path: string): boolean {
 export function onboardingQuestions(
   profile: Record<string, unknown> | null,
   campaign: Record<string, unknown> | null,
-  env: NodeJS.ProcessEnv = process.env,
 ): OnboardingReport {
   const p = profile ?? {};
   const c = campaign ?? {};
@@ -145,13 +144,6 @@ export function onboardingQuestions(
       },
     ]);
   }
-
-  group("Verification codes", [
-    blank(env.AUTOAPPLY_OTP_IMAP_USER) && {
-      field: "AUTOAPPLY_OTP_IMAP_USER",
-      question: "A mailbox the server may read for the verification codes Greenhouse and Workday email (an app password, set in the environment; see docs/CONFIGURATION.md, \"Verification codes\").",
-    },
-  ]);
 
   const complete = groups.every((entry) => entry.questions.every((question) => question.optional === true));
   const message =
