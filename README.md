@@ -131,7 +131,8 @@ cp presets/ai-security-us-canada.json ~/.autoapply/companies.json
 Then edit them and verify:
 
 ```bash
-node dist/cli/doctor.js --probe
+node dist/cli/doctor.js --probe            # from a checkout
+npx -y -p autoapply-mcp autoapply-mcp-doctor --probe   # from npm
 ```
 
 `doctor` validates all three files, checks that your resume files exist and are real PDFs, confirms every track points at a resume variant, warns about settings written in the wrong place, and probes each configured board.

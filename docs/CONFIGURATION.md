@@ -21,10 +21,14 @@ AUTOAPPLY_HOME=/path npm run init # or anywhere else
 
 `init` never overwrites an existing file, so re-running it after adding one config fills in only what is missing.
 
+Installed from npm, the same command is `npx -y -p autoapply-mcp autoapply-mcp-init --preset spain`. An agent with no shell does it through MCP instead: `load_preset` (`spain` or `us-canada`) merges the preset's boards into `companies.json`, keeping every board already there, and with `campaign: true` writes the preset's campaign when none exists yet. `setup_profile` and `update_campaign` then fill in the rest.
+
 Validate with:
 
 ```bash
 AUTOAPPLY_HOME=/path/to/config node dist/cli/doctor.js --probe
+# or, installed from npm:
+AUTOAPPLY_HOME=/path/to/config npx -y -p autoapply-mcp autoapply-mcp-doctor --probe
 ```
 
 ## A key written in the wrong place does nothing

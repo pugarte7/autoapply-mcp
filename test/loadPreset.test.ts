@@ -115,6 +115,7 @@ describe("shipped presets", () => {
       }
     }
     expect(pkg.bin["autoapply-mcp-init"]).toBe("dist/cli/init.js");
+    expect(pkg.bin["autoapply-mcp-doctor"]).toBe("dist/cli/doctor.js");
     // npm 11 drops a bin whose path starts with "./".
     for (const path of Object.values(pkg.bin)) expect(path.startsWith("./")).toBe(false);
     expect(readFileSync(join(PACKAGE_ROOT, "src", "cli", "init.ts"), "utf8").startsWith("#!/usr/bin/env node\n")).toBe(true);

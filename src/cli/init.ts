@@ -100,7 +100,7 @@ function main(): void {
       "  3. Edit campaign.json - tracks, locations, compensation floor, submission policy.",
       "     Each track's resumeId must name a variant declared in profile.resumes.",
       "  4. Trim companies.json to the employers you actually want to apply to.",
-      "  5. Verify: node dist/cli/doctor.js --probe",
+      "  5. Verify: npx -y -p autoapply-mcp autoapply-mcp-doctor --probe (node dist/cli/doctor.js --probe from a checkout)",
       "",
       "doctor validates all three files, confirms your resumes exist and are real",
       "PDFs, checks every track resolves to a resume, warns about settings written",
