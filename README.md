@@ -110,13 +110,14 @@ Your agent writes the configuration for you. Everything lives in `~/.autoapply` 
 
 ### The profile template
 
-`examples/profile.example.json` holds no personal data, compensation or location preferences. It does carry a bank of 170 recurring application questions, each matched to the wordings employers use:
+`examples/profile.example.json` holds no personal data, compensation or location preferences. It does carry a bank of 169 recurring application questions, each matched to the wordings employers use:
 
 - **Fill in:** `identity`, `workAuthorization`, `compensation`, `preferences`, `resumes`, `skills`, `facts`, `experience` and `education`. Every value in these sections is a placeholder or an example to replace. The `workAuthorization` country lists start empty, which gates out every posting that requires citizenship until you add the ISO codes, such as `CA` or `US`, of the countries you can work in.
 - **Pre-answered:** decisions that hold for almost anyone, which you should review once before your first run:
   - "How did you hear about us?" (the company careers page);
-  - privacy, data-processing and background-check consents;
+  - optional consents (talent pool, future openings, marketing), set to decline;
   - voluntary demographic questions, set to decline.
+- **Consents are yours:** the privacy notice and data-processing consent a form requires, a background check and AI evaluation start blank. The agent asks you once in its onboarding message and reuses your answer; nothing is accepted in your name before you say so.
 - **Blank:** anything personal. A blank answer means you are asked whenever a form needs it; write it once and it is reused. Legally material questions, such as work authorization, export control, government ties, arbitration and salary, are also set to `allowAutoFill: false`, so a filled-in answer stays a suggestion until you set it to true.
 - **Narratives:** the two "why this company" templates stay suggestions until you rewrite them in your own words and set `allowAutoFill` to true. See [docs/BATCH.md](docs/BATCH.md#narrative-templates).
 

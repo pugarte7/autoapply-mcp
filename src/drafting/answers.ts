@@ -911,9 +911,11 @@ function answerOne(
     // a named document or process and claims nothing about the candidate. See
     // documentConsent.ts: IonQ's "Background Check Disclosure & Consent" is a
     // formality, "I certify that I have never been convicted" is not.
-    const consentOnly = SELF_EVIDENT_CONSENT_CATEGORIES.has(category)
-      ? soleConsentOption(question)
-      : soleDocumentConsentOption(question);
+    const consentOnly = !acceptsRequiredNotices(profile)
+      ? undefined
+      : SELF_EVIDENT_CONSENT_CATEGORIES.has(category)
+        ? soleConsentOption(question)
+        : soleDocumentConsentOption(question);
     if (consentOnly) {
       return {
         questionKey: question.key,
@@ -1021,7 +1023,7 @@ function answerOne(
 
   if (looksLikeEssay(question.label, question.type)) return agentDraftedEssay(question);
 
-  const soleConsent = soleConsentOption(question);
+  const soleConsent = acceptsRequiredNotices(profile) ? soleConsentOption(question) : undefined;
   if (soleConsent) {
     return {
       questionKey: question.key,
@@ -1084,6 +1086,19 @@ function declinesDemographics(profile: Profile): boolean {
   if (stored.length === 0) return false;
   return stored.every((value) =>
     /\b(?:decline|prefer not|don'?t wish|do not wish|not (?:to )?(?:answer|disclose|specify)|wish not)\b/i.test(value),
+  );
+}
+
+/**
+ * Whether the person has said, once, that the notices a form requires (its
+ * privacy notice, the processing of their data for the application, "I
+ * acknowledge") may be accepted for them: the `acknowledgement` answer, a yes
+ * they can auto-fill. Until then a lone consent option is theirs to give, not
+ * a formality the server takes on their behalf.
+ */
+function acceptsRequiredNotices(profile: Profile): boolean {
+  return profile.answers.some(
+    (entry) => entry.key === "acknowledgement" && entry.allowAutoFill && isConsentingAnswer(entry.answer),
   );
 }
 

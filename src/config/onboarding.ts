@@ -18,6 +18,8 @@ export type OnboardingReport = { complete: boolean; groups: OnboardingGroup[]; m
 
 /** How many blank answer-bank questions are listed by name before the rest are counted. */
 const BANK_LISTED = 20;
+/** The answer-bank entry for the notices a form requires: asked on its own, never left in the list. */
+const CONSENT_KEY = "acknowledgement";
 
 function at(root: unknown, path: string): unknown {
   return path.split(".").reduce<unknown>((value, key) => (isPlainObject(value) ? value[key] : undefined), root);
@@ -116,7 +118,13 @@ export function onboardingQuestions(
   ]);
 
   const demographics = ["gender", "raceEthnicity", "veteranStatus", "disabilityStatus"];
+  const consent = entries(p.answers).find((entry) => entry.key === CONSENT_KEY);
   group("Questions most forms ask", [
+    consent !== undefined && blank(consent.answer) && {
+      field: `answers.${CONSENT_KEY}`,
+      question:
+        "Almost every form requires accepting the employer's privacy notice and the processing of your data for that application. May I accept those for you on every application (yes), or ask you each time (no)? Optional consents, such as a talent pool or marketing, are always declined. Record the answer with remember_answer, key acknowledgement.",
+    },
     storedBlank(p, "personal.legalAgeConfirmation") && { field: "personal.legalAgeConfirmation", question: "Are you 18 or older?" },
     demographics.every((field) => storedBlank(p, `personal.demographics.${field}`)) && {
       field: "personal.demographics",
@@ -125,7 +133,9 @@ export function onboardingQuestions(
     },
   ]);
 
-  const unanswered = entries(p.answers).filter((entry) => blank(entry.answer) && entry.skip !== true);
+  const unanswered = entries(p.answers).filter(
+    (entry) => blank(entry.answer) && entry.skip !== true && entry.key !== CONSENT_KEY,
+  );
   if (unanswered.length > 0) {
     const byCategory = new Map<string, string[]>();
     for (const entry of unanswered) {

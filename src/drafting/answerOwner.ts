@@ -1,5 +1,4 @@
 import { classifyQuestion } from "./blockedQuestions.js";
-import { consentsToDocument } from "./documentConsent.js";
 
 /**
  * Who has to answer a question the policy engine left open.
@@ -14,10 +13,10 @@ import { consentsToDocument } from "./documentConsent.js";
  * What only the person can answer is a statement with legal or personal
  * weight that nothing on file already states: their right to work, a visa,
  * citizenship, clearance, criminal history, pay, and the voluntary
- * self-identification questions. An attestation is the same when it asserts
- * something about the candidate. A bare consent to a document or process
- * claims nothing, so the agent may take it like any other field; a lone
- * consent option is already resolved before this point.
+ * self-identification questions, and every attestation or consent: a privacy
+ * notice or data-processing consent is the person's to give, so it reaches
+ * the agent only once they have said yes in the answer bank, and a question
+ * that gets here has no such yes.
  *
  * This only routes the question. It never makes an answer acceptable: the
  * truthfulness checks run on whatever is recorded, whoever wrote it.
@@ -54,12 +53,7 @@ const MENTIONS_PAY = /\b(?:salar(?:y|ies)|compensation|remuneration|wages?|pay (
 export function answerOwner(label: string, category: string): AnswerOwner {
   if (MENTIONS_PAY.test(label)) return "person";
   const categories = [category, classifyQuestion(label)];
-  const personal = categories.some((entry) => PERSON_ONLY_CATEGORIES.has(entry));
-  if (!personal) return "agent";
-  const attestationOnly = categories.every(
-    (entry) => entry === "legal-attestation" || !PERSON_ONLY_CATEGORIES.has(entry),
-  );
-  return attestationOnly && consentsToDocument(label) ? "agent" : "person";
+  return categories.some((entry) => PERSON_ONLY_CATEGORIES.has(entry)) ? "person" : "agent";
 }
 
 /** Shown on an essay the engine will not fill, so the agent writes it rather than asking. */
