@@ -28,7 +28,7 @@ describe("domain schemas", () => {
   it("applies documented defaults", () => {
     const campaign = makeCampaign();
     expect(campaign.scoring.weights.roleAlignment).toBe(25);
-    expect(campaign.submission.mode).toBe("manual");
+    expect(campaign.submission.mode).toBe("auto");
     expect(campaign.submission.blockedQuestionCategories).toContain("work-authorization");
     expect(CompanySchema.parse({ name: "A", ats: "lever", board: "a" }).tier).toBe("B");
   });
@@ -200,19 +200,19 @@ describe("utilities", () => {
 });
 
 describe("submission.maxBatchSize", () => {
-  it("defaults to 3 so a batch stays reviewable", () => {
-    expect(SubmissionPolicySchema.parse({}).maxBatchSize).toBe(3);
-    expect(makeCampaign().submission.maxBatchSize).toBe(3);
+  it("defaults to 15, a day's work in one approval", () => {
+    expect(SubmissionPolicySchema.parse({}).maxBatchSize).toBe(15);
+    expect(makeCampaign().submission.maxBatchSize).toBe(15);
   });
 
   it("acts as a hard ceiling over a larger requested limit", () => {
     const { maxBatchSize } = SubmissionPolicySchema.parse({});
-    expect(Math.min(120, maxBatchSize)).toBe(3);
+    expect(Math.min(120, maxBatchSize)).toBe(15);
     expect(Math.min(2, maxBatchSize)).toBe(2);
   });
 
   it("is configurable upward when a campaign asks for it", () => {
-    expect(SubmissionPolicySchema.parse({ maxBatchSize: 10 }).maxBatchSize).toBe(10);
+    expect(SubmissionPolicySchema.parse({ maxBatchSize: 40 }).maxBatchSize).toBe(40);
   });
 
   it("rejects a non-positive cap", () => {

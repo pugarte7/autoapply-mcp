@@ -4,7 +4,7 @@ This server automates a process that has real consequences: a bad submission rea
 
 ## The approval boundary
 
-Discovery, gating, scoring and drafting are fully automated. Submission is not.
+Discovery, gating, scoring and drafting are fully automated. Submission needs a decision by the person: either on the packet itself, on the batch that holds it, or on a set of standing rules they approved ahead of time that cover it.
 
 `submit_application` re-checks every one of these before anything reaches an employer:
 
@@ -12,17 +12,38 @@ Discovery, gating, scoring and drafting are fully automated. Submission is not.
 |---|---|
 | Application already sent | `already_submitted` |
 | Requested mode exceeds the campaign's configured mode | `mode_not_permitted` |
-| No recorded human approval | `not_approved` |
+| Board has no browser submission (SmartRecruiters, Workable, Recruitee, Apple) | `ats_browser_not_supported` |
+| No recorded human approval, and no active standing rules | `not_approved` |
+| Active standing rules exist, but none covers this application | `rules_not_matched` |
+| The covering rules have used their daily or per-run allowance | `rules_daily_cap_reached`, `rules_run_cap_reached` |
 | Content changed since approval | `packet_changed` |
 | A question needing a human is still unanswered | `unresolved_questions` |
 | Destination host is not allowlisted | `destination_not_allowed` |
-| Auto mode for a company that is not allowlisted | `company_not_allowlisted` |
+| Auto mode for a company missing from a non-empty `allowedCompanies` | `company_not_allowlisted` |
 | Configured daily submission cap reached | `daily_limit_reached` |
 | Minimum interval between submissions not elapsed | `pacing` |
 
 Approval binds to a SHA-256 hash of the exact packet: job, apply URL, resume, cover letter and every answer. Change one character and the previous approval no longer applies.
 
 The hash proves what was approved, not who approved it: the model reads it from `preview_application` and could hand it straight back. So `approve_application` and `approve_batch` ask the person themselves, through the client's approval dialog (MCP elicitation), and record nothing unless they say yes. A client with no such dialog is refused with a command for the person's own terminal, `dist/cli/approve.js`, which will not run without a terminal on both ends, so an agent's shell tool cannot answer for them.
+
+### Standing rules
+
+Approving every packet keeps a person at the keyboard, so an agent could never run on its own. Standing rules move that decision earlier: the person approves, once, a description of what may be sent, and a packet that fits it goes out without another question.
+
+`approve_rules` stores the agent's proposal and shows the person a summary of it, through the same dialog or `node dist/cli/approve.js rules <rulesId> <rulesHash>`. The proposal authorises nothing until they say yes, and the hash ties their yes to the rules they read. The agent cannot record rules itself, any more than it can approve a packet. Each rule set records whether it was approved in the dialog or the terminal, and expires after 30 days by default and 90 at most. `revoke_rules` ends it at once, with no confirmation.
+
+A rule set covers an application only when all of these hold:
+
+- the posting passed the campaign gates, and its tier, score, track, company and board are inside the rules
+- every question in a person-only category (work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, legal attestations) carries a standing answer the person recorded in `profile.answers` or `profile.personal` with auto-fill. An answer passed through `set_application_content` never counts, whatever source it is labelled with, because the agent calls that tool. Trimming `blockedQuestionCategories` in the campaign does not hand these categories to the rules
+- no suggestion the drafting engine flagged for a person is still unconfirmed
+- a cover letter or essay the agent wrote is only sent when the rules say `allowAgentDraftedText: true`
+- the rule set has room left under its `maxPerDay` and `maxPerRun`
+
+Everything else in the table above still applies to a rules-authorised application: campaign mode, allowed destinations, exclusions, the company allowlist for auto mode, the per-company cap, the daily limit, pacing, the resume check and unresolved questions. A packet the person rejected stays rejected, and one they approved and that changed afterwards is refused as `packet_changed`, rules or not. Every submission's audit event says whether a packet approval or which rule set authorised it.
+
+What the person gives up is honest to state: answers to ordinary questions that the agent wrote from the profile and CV, and with `allowAgentDraftedText` its cover letters and essays, reach the employer without being read first. Keep the rules narrow, and read the daily digest.
 
 ## Truthfulness
 
@@ -34,6 +55,8 @@ The answer policy engine can produce an answer from exactly four sources:
 4. A `profile.narratives` template, rendered from the specific posting.
 
 Everything else is returned with `source: "blocked"` and an empty answer. The server has no fallback that guesses, infers or generates a plausible response.
+
+A blocked question is not automatically a question for you. Each one comes back with `who`: `"agent"` when the profile or CV can answer it, `"person"` when only you can. An essay with no authorised narrative is blocked as agent-draftable: the agent writes it from the match report's facts, cites the fact ids it rests on, must not claim anything in `claimsToAvoid`, and records it with `set_application_content`. It is never auto-filled, every answer the agent records is checked by the same rules as any other, and you read it in the packet you approve.
 
 Narrative templates fill `{topics}` only from keywords the posting asks for **and** the profile supports; anything in `claimsToAvoid` is excluded, so a template cannot claim experience the candidate does not have.
 
@@ -120,7 +143,7 @@ residence answer, which states the relocation itself.
 
 Match reports include a `claimsToAvoid` list: requirements the posting asks for that your profile cannot support. An agent writing your cover letter is told explicitly not to claim them.
 
-## Questions that always require a human
+## Questions that never auto-fill
 
 By default these categories never auto-fill:
 
@@ -128,9 +151,15 @@ By default these categories never auto-fill:
 
 They are legally material, ethically sensitive, or negotiation-relevant. Getting them wrong can invalidate an application or an offer.
 
+Of these, only you can answer work authorization, sponsorship, citizenship, clearance, criminal history, compensation, demographics, veteran and disability status, and an attestation that claims something about you (a bare consent to a privacy notice claims nothing). Any question mentioning pay goes to you whatever it classifies as. The agent is told to gather all of these across every pending application into one message. Essays, references and the rest it answers from your profile, and you see them at approval.
+
 A category block can be satisfied in advance, but only by an explicit prior decision recorded in the profile: a `profile.answers` entry with `allowAutoFill: true`, or a `profile.personal` field with `autoFill: true`. This does not weaken the rule; it moves the decision earlier, where it gets more thought than it would on the hundredth form.
 
 Work authorization is held to a stricter standard. It auto-fills only when `workAuthorization.alwaysReviewManually` is `false` **and** a matching approved answer exists. The shipped default satisfies neither. If you enable it, use wording that is accurate for your situation: for a citizen of one country applying in another, "I do not require sponsorship" is frequently untrue, and the accurate phrasing depends on the visa route. Have it reviewed by an immigration lawyer.
+
+## Accounts on employer boards
+
+Registering an account in your name is a bigger step than filling a public form. The server registers one on Workday, which has no other way to apply, and in `assisted` runs, where you are at the window. In `auto` mode it registers on other boards only once `AUTOAPPLY_ATS_PASSWORD` is set, which is the decision to let it. The password stays in the environment and is redacted from every log and result.
 
 ## Batch approval
 
@@ -154,14 +183,34 @@ Job descriptions, careers pages and form labels are third-party input. The serve
 
 ## Anti-bot controls
 
-If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the browser run aborts, captures a screenshot and marks the application `needs_human`. There is no solving, bypassing, proxying or fingerprint spoofing, and none will be added.
+If a CAPTCHA, hCaptcha, reCAPTCHA or Turnstile challenge is detected, the person solves it, not the server. There is no solving, bypassing, proxying or fingerprint spoofing, no solver service, and none will be added.
+
+In a headed run the browser keeps the filled form open, brings its window to the
+front, and tells the person: a macOS notification, plus an MCP logging message
+so the agent can say so in the conversation. It then checks once a second until
+the challenge frames are gone (and, for a challenge raised by the submit click,
+until the page no longer asks for one), for at most `captchaWaitSeconds`
+(default 180, at most 900, per challenge). Once the challenge is cleared the run
+carries on where it stopped: it finishes filling, re-checks the choices it made,
+and clicks submit only if submission was requested and every guard already
+passed. If the time runs out, or the window is closed, the run aborts as it
+always did: it captures a screenshot and the application is marked
+`needs_human`. The result reports `captchaHandedOff: true` and
+`captchaHandoffSeconds` whenever a challenge was handed over. `captchaWaitSeconds:
+0` turns the handoff off.
+
+A headless run cannot show anyone a challenge. When it meets one it stops,
+without marking anything `needs_human`, and the same application is filled again
+once in a visible browser, where the challenge is handed over as above if it
+appears again. That retry only happens where a display is plausibly there (macOS,
+or Linux with `DISPLAY` set); otherwise the headless run aborts as before.
 
 Challenge detection checks every matching iframe, not just the first one, because
 providers may retain hidden frames alongside a visible puzzle. The browser
 rechecks after uploads, while filling, before reporting a prepared form, and
 immediately before a submit click. A late challenge must not be reported as a
 successfully prepared form. Hidden frames and passive badges alone are not
-interactive challenges.
+interactive challenges, so they are never handed over either.
 
 Requests are throttled per host, retried with backoff only on 429 and 5xx, and identify themselves honestly through the User-Agent.
 
@@ -192,7 +241,7 @@ submissions.
 - Solve or evade anti-bot challenges
 - Fabricate experience, skills, dates or metrics
 - Answer immigration, compensation, demographic or legal questions on your behalf
-- Submit without a recorded, content-bound human approval
+- Submit without a human decision: an approval bound to the packet's content, or standing rules the person approved that cover it
 
 ## Residual risks you own
 

@@ -155,7 +155,7 @@ describe("submission guard: resume", () => {
       approval,
       submittedToday: 0,
       lastSubmissionAt: null,
-      requestedMode: "manual" as const,
+      requestedMode: "auto" as const,
     };
   }
 

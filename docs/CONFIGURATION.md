@@ -39,6 +39,8 @@ Treat every `WARN` as a real defect. The commonest cases are submission policy w
 
 Your verified truth. Every drafted answer must trace back to something here.
 
+An agent can write this file for you with `setup_profile` and `remember_answer`, and campaign.json with `update_campaign` (see [TOOLS.md](TOOLS.md#setup)). Each write keeps the previous file as `profile.json.bak`. Until a new profile validates it is kept as `profile.draft.json`.
+
 ### identity
 Name, headline, email, phone, location and links. Contact form fields are filled from these.
 
@@ -81,6 +83,24 @@ At least one variant. Bind variants to campaign tracks:
 
 ### skills
 Name, aliases and a level of `expert`, `strong`, `working` or `familiar`. Levels weight the stack-alignment score; aliases are what make matching work (`OPA` for `Open Policy Agent`).
+
+`since` is when you first used the skill professionally, as a year (`2018`) or `"YYYY-MM"`. It answers "How many years of experience do you have with X?" and "Do you have 5+ years of X experience?", but only when the subject the question names is exactly the skill's name or an alias: "Python and Django" or "backend Python" still come to you. A bare year is counted from the end of that year, so the figure is never more than you have; give the month for an exact count.
+
+```json
+{ "name": "Kubernetes", "aliases": ["k8s"], "level": "strong", "since": "2020-03" }
+```
+
+### languages
+Each language you speak and its level: `A1` to `C2` on the CEFR scale, or `native`, with optional `aliases` ("Castilian" for Spanish).
+
+```json
+"languages": [{ "name": "Spanish", "level": "native" }, { "name": "English", "level": "C1" }]
+```
+
+Level questions get the option that states your level (the CEFR code, or a word such as "Advanced" or "Fluent"; a native speaker may take "Fluent" when no option says native). "Are you fluent in X?" is Yes from C1 and No up to B1; "Do you speak X?" is Yes from B2 and No at A1 and A2; the levels in between come to you. A language you did not list is never answered "No".
+
+### experience
+Your work history, as the CV states it. Besides the employment-history block, it answers "Have you previously worked for X?" and "Have you ever been employed by this company?" when `personal.previousEmployment` is not set: Yes when an entry names that employer, No otherwise. Questions about subsidiaries, affiliates or relatives still come to you.
 
 ### facts
 Your achievement database. Each fact is a statement, optional metrics and tags. Match reports rank these by relevance so an agent writes from your real accomplishments rather than inventing them.
@@ -192,17 +212,19 @@ Thresholds set the tiers. Calibrate them against your own pool: run `discover_jo
 
 ```json
 {
-  "mode": "manual",
+  "mode": "auto",
   "allowedAtsDomains": ["job-boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com"],
   "allowedCompanies": [],
   "dailyLimit": 15,
-  "maxBatchSize": 3,
+  "maxBatchSize": 15,
   "maxPerCompany": 3,
   "minDelaySeconds": 90
 }
 ```
 
-`mode` is a ceiling: a tool call may request a weaker mode but never a stronger one. `blockedQuestionCategories` defaults to the full sensitive set; removing an entry is a deliberate, consequential choice.
+`mode` is `auto` (the default: the agent fills and submits each approved application) or `assisted` (the form is filled in a visible window and the person presses submit). It is a ceiling: under `auto` a call may still ask for `assisted`, never the other way round. A `manual` mode used to exist; a file that still says `"manual"` loads as `auto` and `doctor` warns about it. Approval is required in both modes.
+
+`allowedCompanies` narrows automatic submission: when it lists companies, auto mode submits only to those; empty, any company that passes the campaign's gates may be submitted to. `blockedQuestionCategories` defaults to the full sensitive set; removing an entry is a deliberate, consequential choice.
 
 `dailyLimit` accepts a positive integer or `null`. Set `"dailyLimit": null` to
 disable the daily submission ceiling; omitting it retains the default of 25.
@@ -216,9 +238,9 @@ After upgrading server code to support this setting, restart existing MCP
 connections so they load the new schema. Once the new code is running,
 `reload_config` applies configuration-only changes without another restart.
 
-`allowedCompanies` is an allowlist, not a filter: an empty list blocks every employer. A company must be added by name before any application to it can be submitted, which is what stops a mis-scoped batch from contacting people you never intended to apply to.
+`allowedCompanies` restricts `auto` mode to the companies it names. Empty, the default, means no company restriction: any employer that passes the other guards can be submitted to. A non-empty list limits `auto` submissions to those companies (matched by name, case-insensitively) and refuses the rest with `company_not_allowlisted`, which is how to keep an unattended run inside a set of employers you chose. `assisted` runs are not limited by it, because a person sends those themselves. `exclusions.companies` blocks a company in every mode.
 
-`maxBatchSize` caps how many applications a single `prepare_batch` or `submit_batch` run may touch, even when a caller passes a larger explicit limit. Keeping it small keeps a run reviewable and avoids the rapid consecutive submissions that ATS platforms rate-limit. `maxPerCompany` caps how many live applications may exist for one employer, since several reject the excess outright.
+`maxBatchSize` caps how many applications a single `prepare_batch` or `submit_batch` run may touch, even when a caller passes a larger explicit limit. It defaults to 15, a day's work under one approval. Pacing (`minDelaySeconds`) is what spaces submissions out against ATS rate limits, and `dailyLimit` and `maxPerCompany` still bound the volume. `maxPerCompany` caps how many live applications may exist for one employer, since several reject the excess outright.
 
 ## companies.json
 
@@ -237,15 +259,22 @@ connections so they load the new schema. Once the new code is running,
 
 Start from `presets/ai-security-us-canada.json`, which contains 135 boards verified live against the ATS APIs. `npm run init` copies it for you. It is a starting point, not a fixed list: this file is your own selection, so add and remove boards freely. Boards found during a campaign land in your copy, not in the repository, so contribute anything worth sharing back to the preset.
 
-## Workday accounts (environment only)
+## Candidate accounts (environment only)
 
 Workday makes every applicant register on each employer's tenant, so Workday
-boards need a password the server can register and sign in with.
+boards need a password the server can register and sign in with. Other boards
+that put the form behind a sign-up page get the same treatment in `auto` mode
+once `AUTOAPPLY_ATS_PASSWORD` is set: setting it is the consent to register.
+Without it, only Workday and `assisted` runs (with a person at the window)
+register an account.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Without it a Workday submission stops with a `credentials_missing` error. |
+| `AUTOAPPLY_ATS_PASSWORD` | - | Password for the candidate accounts the server creates and signs into. Overrides the Keychain. |
 | `AUTOAPPLY_ATS_EMAIL` | `personal.email` | Account email, when it should differ from the profile's. |
+| `AUTOAPPLY_ATS_KEYCHAIN` | - | `off` keeps the server away from the macOS Keychain. |
+
+On macOS you do not need to set a password. Without `AUTOAPPLY_ATS_PASSWORD` the server reads it from the login Keychain (service `autoapply-mcp`, account `ats-password`), and the first time a board needs one it generates a 20-character password with upper and lower case, a digit and a symbol, stores it there and uses it from then on. To see it: `security find-generic-password -s autoapply-mcp -a ats-password -w`. On other systems, or with the Keychain off, a Workday submission without the variable stops with a `credentials_missing` error.
 
 Use one password that satisfies common rules (upper and lower case, a digit, a
 symbol). A tenant whose create-account page states a longer minimum - Red Hat
@@ -257,13 +286,29 @@ original.
 ## Verification codes (environment only)
 
 Greenhouse increasingly emails a one-time code before it accepts a submission,
-and the code dies the moment a second submit asks for a new one. `submit_application`
-with `waitForCodeSeconds` therefore holds the browser at the gate and polls
-`<artifacts>/<applicationId>.code`, which a person can write by hand.
+and the code dies the moment a second submit asks for a new one. Whatever reads
+it, the browser has to stay at the gate until the code is typed in. There are
+three readers, and whichever answers first is used:
 
-Setting the variables below lets the server read that code out of a mailbox
-instead. Both readers run together, so the file hand-off keeps working and
-whichever code arrives first is used.
+- **The agent (hand-off).** With no mailbox configured, `submit_application` in
+  auto mode returns `awaiting_code` as soon as the gate appears and the server
+  keeps the browser parked at it, by default for 15 minutes (`waitForCodeSeconds`,
+  at most 30). The result names the sender to look for and when the code was
+  emailed. An agent with its own access to the candidate's mail, such as a Gmail
+  connector, reads the newest email from that sender received after that moment
+  and calls `provide_verification_code`; without mail access it asks the person
+  once. A refused code can be replaced while the gate still offers its box. Ask
+  for this explicitly with `codeDelivery: "handoff"`, also when a mailbox is set.
+- **The code file.** A person can write the code to
+  `<artifacts>/<applicationId>.code`; it is read in both modes.
+- **The server's own mailbox (wait).** Set the variables below and the call
+  blocks (300 seconds by default, `waitForCodeSeconds` changes it) while the server reads the code out
+  of the mailbox itself. In hand-off mode the same mailbox keeps being read in the
+  background.
+
+Held browsers live in the server process: they close when the hold expires, when
+the client disconnects and when the server stops, and the code then dies with
+them.
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -289,8 +334,8 @@ invalidating the code the run is waiting for.
 
 **Workday account verification.** Workday will not let a newly registered
 candidate account sign in until a link it emails has been opened. The same
-inbox supplies that link: with it configured and `waitForCodeSeconds` set, a run
-waits up to that long for the email - sent on registration, or requested with
+inbox supplies that link: with it configured, a run waits up to
+`waitForCodeSeconds` (300 by default) for the email - sent on registration, or requested with
 "Resend Account Verification" when an earlier run left the account unverified -
 opens the link in a second tab, signs in and carries on to the application.
 Without the inbox, or if no email arrives in time, the run stops with
@@ -303,6 +348,35 @@ the request, are followed; a link naming another tenant is skipped, and the
 link itself is never logged.
 
 Requires `npm install imapflow`, an optional peer dependency.
+
+In hand-off mode an agent can pass the link itself: the email to read is the
+newest from an address on `workday.com` or `myworkday.com`, and the link goes
+to `provide_verification_code` as `link`. It is held to the same checks as one
+read from the mailbox.
+
+### Later: Gmail OAuth instead of an app password
+
+An app password is the only way in today, and it is a blunt one: it reads the
+whole mailbox, needs 2-Step Verification, and a Workspace admin can switch app
+passwords off. Gmail's own OAuth with the `gmail.readonly` scope would replace
+it, searching only for the board's sender after the submit. That is not built
+yet, and it needs two things the server cannot do alone:
+
+- **An OAuth client of your own.** `gmail.readonly` is a restricted scope, so a
+  client ID shipped with this package would need Google's security assessment.
+  You create a Desktop OAuth client in a Google Cloud project, enable the Gmail
+  API, add yourself as a test user, and give the server its client ID. While the
+  project stays in testing, Google expires its refresh tokens after seven days,
+  so the sign-in has to be repeated weekly.
+- **A way to sign in without the server ever seeing your password.** Either the
+  MCP client opens Google's consent page through URL-mode elicitation and hands
+  the server only the resulting code, or a small CLI run in your own terminal
+  (like `approve.js`) does the sign-in and stores the refresh token in the macOS
+  Keychain. Either way the token stays out of `profile.json`, `campaign.json`,
+  logs and tool output, and form elicitation never asks for a password.
+
+Until then, the hand-off above covers agents that already have a Gmail
+connector, and an app password on a forwarding-only mailbox covers the rest.
 
 ## Career sites: Google, Meta, Amazon and Apple
 

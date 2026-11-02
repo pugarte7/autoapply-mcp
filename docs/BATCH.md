@@ -12,6 +12,8 @@ submit_batch    submit the set, honouring daily limit and pacing
 list_batches    track progress
 ```
 
+To run without anyone at the keyboard, the person approves standing rules once with `approve_rules`; `submit_batch` then sends the applications those rules cover, and [DAILY.md](DAILY.md) schedules the whole flow every morning.
+
 ## prepare_batch
 
 Selects queued jobs matching a filter and prepares each one through the same code path as `prepare_application`.
@@ -129,7 +131,7 @@ Both surface in `prepare_application` under `questionsNeedingHuman`, and in `pre
 
 This is the right shape for attestations about the application itself. Whether AI assistance was used is a fact only you can attest to, and some employers - Anthropic among them - explicitly ask for unmediated writing on questions like "Why this company?". Where an employer asks that, write that answer yourself rather than relying on a narrative template.
 
-`essay` questions are never pre-answered: a generic answer to "why do you want to work here" is worse than none.
+`essay` questions are never pre-answered: a generic answer to "why do you want to work here" is worse than none. Each one comes back marked `who: "agent"`, and the agent writes it for that posting from the match report's facts, citing them, before you approve the batch. Where an employer asks for writing without AI assistance, the agent leaves it to you.
 
 ## Work authorization
 
@@ -251,11 +253,12 @@ additional reviewed batches rather than making a single unbounded batch.
 
 | Mode | Result |
 |---|---|
-| `manual` | Returns apply URLs and packets for you to submit, then call `record_submission` |
+| `auto` (default) | Fills and submits. Requires campaign mode `auto` and, when `allowedCompanies` lists companies, one of them |
 | `assisted` | Fills each hosted form in a visible browser for you to review and submit |
-| `auto` | Fills and submits. Requires campaign mode `auto` and an allowlisted company |
 
-A CAPTCHA, an unfillable required field, or an off-allowlist redirect marks that application `needs_human` and the batch continues.
+A board without browser submission is marked `blocked` with `ats_browser_not_supported`; the person applies at its URL and the agent calls `record_submission`.
+
+An unfillable required field, an off-allowlist redirect, or a CAPTCHA the person did not solve within `captchaWaitSeconds` marks that application `needs_human` and the batch continues. Each such result carries `fieldsToAnswer` and a `nextStep`: the agent answers the `who: "agent"` fields from your profile and resubmits that application. With a verification mailbox configured, each run waits up to 300 seconds at a code gate (`waitForCodeSeconds` changes it), reading the code from the mailbox or from that application's own `<artifacts>/<applicationId>.code`; without one, gated applications are parked for `provide_verification_code`.
 
 ## Realistic volume
 

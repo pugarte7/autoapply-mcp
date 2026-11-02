@@ -87,9 +87,10 @@ this fallback. Slug guessing still probes the API only, so use an employer's
 official hosted-board URL with `add_company_board` when that API is unavailable.
 
 SmartRecruiters, Workable and Recruitee **do not have browser submission
-integrations**. Their assisted/auto calls fail with `ats_browser_not_supported`,
-even if a domain has been explicitly allowlisted. Manual packets still require
-the normal approval, resume, destination and pacing guards.
+integrations**. Submitting to them fails with `ats_browser_not_supported`, even
+if a domain has been explicitly allowlisted. The person applies at the posting's
+URL themselves and the agent calls `record_submission`, so counts and pacing
+stay accurate.
 
 ## Aggregate leads
 

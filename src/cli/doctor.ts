@@ -2,6 +2,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { loadCampaign, loadCompanies, loadProfile } from "../config/load.js";
 import { resolvePaths } from "../config/paths.js";
+import { findLegacyCampaignSettings } from "../config/legacySettings.js";
 import { findStrayKeys, locateInSchema } from "../config/strayKeys.js";
 import { CampaignSchema } from "../domain/campaign.js";
 import { ProfileSchema } from "../domain/profile.js";
@@ -30,18 +31,23 @@ function print(check: Check): void {
  * behaves as absent; naming the correct location turns that into a one-line fix.
  */
 function reportStrayKeys(label: string, path: string, schema: Parameters<typeof findStrayKeys>[0]): string[] {
-  if (!existsSync(path)) return [];
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
-  } catch {
-    // Invalid JSON is already reported by the load check above.
-    return [];
-  }
+  const parsed = readRawJson(path);
+  if (parsed === undefined) return [];
   return findStrayKeys(schema, parsed).map((key) => {
     const home = locateInSchema(schema, key.split(".").pop() ?? key);
     return home ? `${label}: "${key}" is ignored; it belongs at "${home}"` : `${label}: "${key}" is not a known setting and is ignored`;
   });
+}
+
+/** The file as written, before the schema fills defaults or remaps values. */
+function readRawJson(path: string): unknown {
+  if (!existsSync(path)) return undefined;
+  try {
+    return JSON.parse(readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
+  } catch {
+    // Invalid JSON is already reported by the load check above.
+    return undefined;
+  }
 }
 
 async function main(): Promise<void> {
@@ -103,6 +109,7 @@ async function main(): Promise<void> {
   const strays = [
     ...reportStrayKeys("profile.json", paths.profile, ProfileSchema),
     ...reportStrayKeys("campaign.json", paths.campaign, CampaignSchema),
+    ...findLegacyCampaignSettings(readRawJson(paths.campaign)),
   ];
   if (strays.length > 0) {
     console.log("");

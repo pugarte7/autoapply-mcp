@@ -7,9 +7,11 @@ import { applicationCountsByCompany, getEvaluation, getJob } from "../db/reposit
 import type { Application, DraftAnswer } from "../domain/job.js";
 import { unresolvedRequired, type FormQuestion } from "../drafting/answers.js";
 import { prepareApplicationFor } from "../drafting/prepare.js";
+import type { AnswerOwner } from "../drafting/answerOwner.js";
 import { computePacketHash, renderPacketPreview, type SubmissionPacket } from "../submission/packet.js";
 import { AppError } from "../util/errors.js";
 import { handler, ok, okText } from "./helpers.js";
+import { rememberAnswers } from "./setup.js";
 
 /** Tools that assemble a single application without sending anything. */
 
@@ -25,6 +27,27 @@ function buildPacket(application: Application, job: { companyName: string; title
     coverLetter: application.coverLetter,
     answers: application.answers,
   };
+}
+
+/**
+ * "Answer the flagged questions" read as "ask the person the flagged
+ * questions", so every essay and every fact already in the CV became a
+ * message to them. The step now says which ones are the agent's to write.
+ */
+export function outstandingNextStep(outstanding: ReadonlyArray<{ who: AnswerOwner }>): string {
+  const approve = "preview_application, then approve_application, which asks the person through the approval dialog";
+  if (outstanding.length === 0) return `Review with ${approve}.`;
+  const agent = outstanding.filter((question) => question.who === "agent").length;
+  const person = outstanding.length - agent;
+  const steps = [
+    agent > 0
+      ? `Write the ${agent} answer${agent === 1 ? "" : "s"} marked who=agent yourself from the match report's facts (cite fact ids, never claim anything in claimsToAvoid) and record them with set_application_content.`
+      : "",
+    person > 0
+      ? `Only the person can answer the ${person} marked who=person: gather them with every other pending application's into one message, then record their answers with set_application_content.`
+      : "",
+  ].filter((step) => step.length > 0);
+  return `${steps.join(" ")} Then ${approve}.`;
 }
 
 export function registerDraftingTools(server: McpServer): void {
@@ -99,10 +122,8 @@ export function registerDraftingTools(server: McpServer): void {
         questionsNeedingHuman: prepared.outstanding,
         autoFilledAnswers: prepared.autoFilled,
         nextStep: !resumeCheck.ok
-          ? `Resume unusable: ${resumeCheck.reason}. Fix the file or profile.resumes path, then run prepare_application again.`
-          : prepared.outstanding.length > 0
-            ? "Answer the flagged questions with set_application_content, then approve_application."
-            : "Review with preview_application, then approve_application.",
+          ? `Resume unusable: ${resumeCheck.reason}. If you can reach the CV, point profile.resumes[].path at a valid PDF yourself; only if you cannot, ask the person for it. Then run prepare_application again.`
+          : outstandingNextStep(prepared.outstanding),
       });
     }),
   );
@@ -117,14 +138,32 @@ export function registerDraftingTools(server: McpServer): void {
         applicationId: z.string().min(1),
         coverLetter: z.string().optional(),
         answers: z
-          .array(z.object({ questionKey: z.string().min(1), answer: z.string() }))
+          .array(
+            z.object({
+              questionKey: z.string().min(1),
+              answer: z.string(),
+              remember: z
+                .boolean()
+                .optional()
+                .describe("Also store it as a standing answer for every application that asks this question, as remember_answer does."),
+              statedByPerson: z
+                .boolean()
+                .optional()
+                .describe("With remember: true only when the person gave this answer in their own words; otherwise they are asked to confirm it."),
+            }),
+          )
           .optional()
           .describe("Answers keyed by questionKey from prepare_application."),
         notes: z.string().optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false },
     },
-    handler(async (args: { applicationId: string; coverLetter?: string; answers?: Array<{ questionKey: string; answer: string }>; notes?: string }) => {
+    handler(async (args: {
+      applicationId: string;
+      coverLetter?: string;
+      answers?: Array<{ questionKey: string; answer: string; remember?: boolean; statedByPerson?: boolean }>;
+      notes?: string;
+    }) => {
       const workspace = getWorkspace();
       const application = getApplication(workspace.db, args.applicationId);
       if (!application) throw new AppError("application_not_found", `no application ${args.applicationId}`);
@@ -143,7 +182,9 @@ export function registerDraftingTools(server: McpServer): void {
 
       const answers: DraftAnswer[] = application.answers.map((answer) =>
         updates.has(answer.questionKey)
-          ? { ...answer, answer: updates.get(answer.questionKey)!, source: "human", citation: "provided via set_application_content" }
+          ? // The model calls this tool, so the answer is the agent's; only the
+            // person's own dialog or terminal can make an answer theirs.
+            { ...answer, answer: updates.get(answer.questionKey)!, source: "agent", citation: "provided via set_application_content" }
           : answer,
       );
 
@@ -176,12 +217,28 @@ export function registerDraftingTools(server: McpServer): void {
         status: updated.status,
       });
 
+      // Remembered after this application is saved, so the re-draft that
+      // follows sees its answers as given and leaves them alone.
+      const toRemember = (args.answers ?? []).filter((entry) => entry.remember === true);
+      const remembered =
+        toRemember.length > 0
+          ? await rememberAnswers(
+              server,
+              toRemember.map((entry) => ({
+                label: application.answers.find((answer) => answer.questionKey === entry.questionKey)!.label,
+                answer: entry.answer,
+                statedByPerson: entry.statedByPerson === true,
+              })),
+            )
+          : undefined;
+
       return ok({
         applicationId: updated.id,
         status: updated.status,
         packetHash: updated.packetHash,
         outstandingQuestions: stillMissing.map((answer) => answer.label),
         optionalUnanswered: optionalUnanswered.map((answer) => answer.label),
+        ...(remembered ? { remembered } : {}),
         note: "Approval is bound to packetHash; approve the value shown here.",
       });
     }),

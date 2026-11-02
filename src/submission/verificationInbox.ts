@@ -215,6 +215,8 @@ export type VerificationLinkQuery = {
   pollMs?: number;
   /** The tenant applied to: `acme` for `acme.wd5.myworkdayjobs.com`. */
   tenant?: string;
+  /** Stops the wait early, when the link has arrived some other way. */
+  signal?: AbortSignal;
 };
 
 /** Gap between mailbox reads while a verification email is awaited. */
@@ -240,6 +242,7 @@ export async function fetchVerificationLink(
   const searchFrom = new Date(query.since.getTime() - SEARCH_BACKDATE_MS);
   const notBefore = new Date(query.since.getTime() - LINK_CLOCK_TOLERANCE_MS);
   for (;;) {
+    if (query.signal?.aborted) return null;
     const messages = await fetchMessages(config, searchFrom, notBefore).catch((error: unknown) => {
       logger.warn("verification inbox unreadable", { detail: String(error) });
       return [] as ImapMessage[];
@@ -250,9 +253,22 @@ export async function fetchVerificationLink(
       return link;
     }
     const remaining = deadline - Date.now();
-    if (remaining <= 0) return null;
-    await new Promise<void>((resolve) => setTimeout(resolve, Math.min(pollMs, remaining)));
+    if (remaining <= 0 || query.signal?.aborted) return null;
+    await pause(Math.min(pollMs, remaining), query.signal);
   }
+}
+
+/** A sleep that an abort cuts short. */
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
 
 /**

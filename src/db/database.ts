@@ -120,6 +120,28 @@ CREATE TABLE IF NOT EXISTS batch_items (
   PRIMARY KEY (batch_id, application_id)
 );
 CREATE INDEX IF NOT EXISTS idx_batch_items_batch ON batch_items(batch_id, state);
+
+-- Standing rules the person approved once. Proposed rows have no approved_at
+-- and authorise nothing; only the person's yes, in the dialog or their own
+-- terminal, sets it.
+CREATE TABLE IF NOT EXISTS standing_rules (
+  id TEXT PRIMARY KEY,
+  rules_json TEXT NOT NULL,
+  rules_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  approved_at TEXT,
+  approved_via TEXT,
+  revoked_at TEXT
+);
+
+-- One row per submission standing rules authorised, for their caps and audit.
+CREATE TABLE IF NOT EXISTS standing_rule_uses (
+  rules_id TEXT NOT NULL,
+  application_id TEXT NOT NULL,
+  used_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_rule_uses ON standing_rule_uses(rules_id, used_at);
 `;
 
 export type Db = DatabaseSync;

@@ -7,8 +7,11 @@ import {
   packetFor,
   recordApplicationDecision,
   recordBatchApproval,
+  recordRulesApproval,
+  rulesQuestion,
 } from "../submission/approvals.js";
 import { AppError, toErrorMessage } from "../util/errors.js";
+import { confirmSetup } from "./confirmSetup.js";
 
 /**
  * Approval from the person's own terminal, for MCP clients that cannot show an
@@ -16,6 +19,8 @@ import { AppError, toErrorMessage } from "../util/errors.js";
  *
  *   node dist/cli/approve.js <applicationId> <packetHash>
  *   node dist/cli/approve.js --batch <batchId> <manifestHash> <count>
+ *   node dist/cli/approve.js --setup <changeId>
+ *   node dist/cli/approve.js rules <rulesId> <rulesHash>
  *
  * It shows what would be sent and records an approval only on a typed "yes".
  * It will not run without a terminal on both ends, which is what keeps an
@@ -24,7 +29,11 @@ import { AppError, toErrorMessage } from "../util/errors.js";
  * This is a CLI, so writing to stdout is correct here.
  */
 
-const USAGE = "usage: approve.js <applicationId> <packetHash>\n       approve.js --batch <batchId> <manifestHash> <count>";
+const USAGE = [
+  "usage: approve.js <applicationId> <packetHash>",
+  "       approve.js --batch <batchId> <manifestHash> <count>",
+  "       approve.js rules <rulesId> <rulesHash>",
+].join("\n");
 const NOTE = "approved in the terminal";
 
 async function main(argv: string[]): Promise<number> {
@@ -32,15 +41,19 @@ async function main(argv: string[]): Promise<number> {
     console.error("Run this in your own terminal: an approval is the person's to give, not an agent's.");
     return 1;
   }
+  if (argv[0] === "--setup") return confirmSetup(argv[1]);
   const batch = argv[0] === "--batch";
-  const [id, hash, count] = batch ? argv.slice(1) : argv;
+  const rules = argv[0] === "rules";
+  const [id, hash, count] = batch || rules ? argv.slice(1) : argv;
   if (!id || !hash || (batch && !count)) {
     console.error(USAGE);
     return 2;
   }
 
   let question: string;
-  if (batch) {
+  if (rules) {
+    question = rulesQuestion(id, hash);
+  } else if (batch) {
     checkBatchManifest(id, hash, Number(count));
     question = batchQuestion(id);
   } else {
@@ -59,7 +72,9 @@ async function main(argv: string[]): Promise<number> {
     console.log("Not approved; nothing was recorded.");
     return 1;
   }
-  const result = batch
+  const result = rules
+    ? recordRulesApproval(id, hash, "cli")
+    : batch
     ? recordBatchApproval(id, hash, Number(count), NOTE)
     : recordApplicationDecision(id, hash, "approved", NOTE);
   console.log(JSON.stringify(result, null, 2));

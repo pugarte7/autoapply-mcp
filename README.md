@@ -33,7 +33,7 @@ It is built for high-volume job search **without** becoming a spam bot. Discover
 | Score | Ranks survivors across seven weighted dimensions, each with the quote that earned it |
 | Draft | Builds a match report, loads the employer's real questions, and answers only what verified profile data supports |
 | Approve | Binds a human approval to a hash of the exact submission content |
-| Submit | Manual, assisted or auto - never beyond the mode the campaign permits |
+| Submit | Fills and submits approved applications by itself, or fills them for you to submit (assisted) |
 | Track | Records submissions, outcomes and an append-only audit log |
 
 Location gates understand the US, the Bay Area, Canada, Spain and Europe, on-site and remote.
@@ -46,19 +46,19 @@ Location gates understand the US, the Bay Area, Canada, Spain and Europe, on-sit
 | Lever | Yes | Yes, from the apply page | Assisted and auto |
 | Ashby | Yes | Yes, from the hosted job page | Assisted and auto |
 | Workday | Yes | Read during the assisted run | Assisted and auto, through a candidate account on each employer's tenant |
-| SmartRecruiters | Yes | No | Manual packets only |
-| Workable | Yes | No | Manual packets only |
-| Recruitee | Yes | No | Manual packets only |
+| SmartRecruiters | Yes | No | Not yet; you apply at the URL and the agent records it |
+| Workable | Yes | No | Not yet; you apply at the URL and the agent records it |
+| Recruitee | Yes | No | Not yet; you apply at the URL and the agent records it |
 
 Leads also come from Himalayas, Foorilla PRO+ and the portfolio pages of a16z, Sequoia, YC and Built In SF. See [Additional listing sources](#additional-listing-sources).
 
 ## Design rules
 
-1. **Nothing is invented.** Every drafted answer traces to a profile field or a pre-approved answer. Anything else is handed back to you.
+1. **Nothing is invented.** Every drafted answer traces to a profile field or a pre-approved answer. Anything else is handed back: to your agent when your profile answers it, to you when only you can.
 2. **Sensitive questions always stop.** Work authorization, citizenship, compensation, criminal history, demographics and legal attestations require a human decision by default.
 3. **Approval binds to content, and it is yours.** `approve_application` shows you the packet and records your answer with its hash; the model cannot give it for you. Editing anything invalidates it and submission is refused.
 4. **Job descriptions are untrusted data.** Text from employers is scanned for prompt-injection patterns, wrapped in an explicit data boundary, and never treated as instructions.
-5. **Anti-bot controls are respected.** A detected CAPTCHA aborts the run and hands the application back to you. There is no solving, evading or fingerprint spoofing.
+5. **Anti-bot controls are respected.** A detected CAPTCHA is handed to you in the open browser with the form filled, and the run continues once you solve it. There is no automated solving, evading or fingerprint spoofing.
 6. **Destinations are allowlisted.** Submissions only go to hosts the campaign explicitly trusts, over HTTPS.
 
 ## Quick start
@@ -150,9 +150,10 @@ a16z, Sequoia, YC or Built In SF page. These results are **unverified leads**, n
 jobs that can bypass campaign gates or submission permissions.
 
 SmartRecruiters, Workable public account feeds and Recruitee company XML feeds
-work with `add_company_board` and `discover_jobs`. These three new ATSs support
-discovery and manual packets only: assisted/automatic submission is explicitly
-blocked until a browser integration exists. Adding a discovery board never
+work with `add_company_board` and `discover_jobs`. These three ATSs support
+discovery only: submitting to them fails with `ats_browser_not_supported` until a
+browser integration exists, so you apply at the posting's URL yourself and the
+agent records it with `record_submission`. Adding a discovery board never
 changes the submission allowlist.
 
 See [docs/SOURCES.md](docs/SOURCES.md) for endpoints, examples, access requirements,
@@ -161,7 +162,7 @@ discovery. Paid accounts are never created automatically.
 
 Nothing in this repository is specific to one candidate. Keep `profile.json`, resumes and the database in `~/.autoapply` and they can never be committed by accident.
 
-A fresh install cannot contact an employer: `submission.mode` is `manual`, and `submission.allowedCompanies` is empty, which blocks every company until you add it by name.
+Nothing is sent to an employer until you approve it. Once you have, the agent submits by itself: `submission.mode` defaults to `auto`. Listing companies in `submission.allowedCompanies` limits automatic submission to them; left empty, any company that passes the campaign's gates is allowed.
 
 ### Environment variables
 
@@ -179,17 +180,16 @@ A fresh install cannot contact an employer: `submission.mode` is `manual`, and `
 | `AUTOAPPLY_FOORILLA_API_KEY` | unset | Optional API key for an existing Foorilla PRO+ subscription; never stored in campaign files |
 | `AUTOAPPLY_OTP_IMAP_USER` | unset | Mailbox that receives forwarded verification mail; switches on reading Greenhouse codes and Workday links |
 | `AUTOAPPLY_OTP_IMAP_PASSWORD` | unset | App password for that mailbox; never stored in campaign files |
-| `AUTOAPPLY_ATS_PASSWORD` | unset | Password for the Workday candidate accounts the server registers |
+| `AUTOAPPLY_ATS_PASSWORD` | unset | Password for the candidate accounts the server registers: always on Workday, and on any other board in `auto` mode once set |
 
-### Link a mailbox for verification codes
+### Verification codes
 
-Greenhouse emails a one-time code before it accepts a submission and Workday emails a link before a new candidate account can sign in. Both are bound to the attempt that requested them, so a run has to read them while the browser holds the gate open. Do this before your first submission:
+Some boards email a code (Greenhouse) or a link (Workday) before they accept an application, and it has to be typed in while the form is still open. The agent needs an email address that receives them, and there are two ways:
 
-1. Make a filter on your real address that forwards `from:(greenhouse OR workday.com OR myworkday.com)` to a mailbox that receives nothing else.
-2. Create an app password for that mailbox and set `AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD` in the MCP client's `env`.
-3. Pass `waitForCodeSeconds` to `submit_application`.
+- **Connect it to the agent.** An agent with its own mail access (a Gmail connector, for example) reads the code itself: the run returns `awaiting_code` with the browser held at the gate, and the agent calls `provide_verification_code`. Or connect the mailbox to the server over IMAP (`AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD`), and runs wait up to 300 seconds and read the code themselves.
+- **Pass the codes on by hand.** The agent asks you for the code when one arrives; the form waits for it.
 
-`doctor` reports whether the mailbox is configured. Without it a gated submission stops and you write the code to `<artifacts>/<applicationId>.code` while the run waits. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
+`doctor` reports whether an IMAP mailbox is configured. Setup details, such as forwarding filters and app passwords, are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
 
 ## Use with Claude, Cursor, Codex and other MCP clients
 
@@ -240,7 +240,7 @@ prepare_application jobId      -> match report, employer questions, drafted answ
 set_application_content        -> your cover letter and any answers only you can give
 preview_application            -> the exact packet plus its hash
 approve_application  + hash    -> asks you to approve that exact packet
-submit_application   mode      -> manual, assisted or auto
+submit_application             -> fills the form and submits it
 record_outcome                 -> track what happened
 ```
 
@@ -250,7 +250,7 @@ High volume:
 prepare_batch  {tiers:["A","B"], locationClasses:["bay-area"], minCompensation:250000}
 preview_batch                  -> the set, plus grouped blocking questions
 approve_batch  + manifestHash + expectedCount   -> asks you to approve the set
-submit_batch   mode            -> honours configured limits and pacing
+submit_batch                   -> submits the set, honouring limits and pacing
 list_batches                   -> progress
 ```
 
@@ -260,16 +260,15 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 | Mode | Behaviour | Use it when |
 |---|---|---|
-| `manual` | Server prepares the packet; you submit it yourself | Always start here |
-| `assisted` | Server fills the hosted form in a visible browser and leaves it open for you to review and submit | After the manual pilot proves the packets are right |
-| `auto` | Server fills and clicks submit | Only for allowlisted companies on forms you have already seen work |
+| `auto` (default) | Server fills the hosted form and clicks submit | Always, unless you want to watch |
+| `assisted` | Server fills the form in a visible browser and leaves it open for you to review and submit | You want to see the form or press submit yourself |
 
-`auto` additionally requires the company to appear in `submission.allowedCompanies`, every required field to be fillable, and no blocked questions to remain unanswered.
+Both modes need your approval first. `auto` also needs every required field to be fillable and no blocked question left unanswered, and, when `submission.allowedCompanies` lists companies, the company to be one of them. Boards without browser submission (SmartRecruiters, Workable, Recruitee, Apple) are refused with `ats_browser_not_supported`: apply at the URL yourself, then `record_submission` keeps the counts right. Older campaign files that say `"manual"` load as `auto`, and `doctor` warns.
 
 ## What it deliberately does not do
 
 - No LinkedIn Easy Apply, Indeed or Wellfound automation. Their terms prohibit it and their anti-bot systems are built to stop it. Use their alerts as leads, then apply through the employer's own board.
-- No assumption that discovery support grants browser submission support. New ATS integrations remain manual-only, and Workday's account-based flow can still require human intervention.
+- No assumption that discovery support grants browser submission support. New ATS integrations stay discovery-only until their browser flow exists, and Workday's account-based flow can still require human intervention.
 - No CAPTCHA solving, proxy rotation or fingerprint evasion.
 - No writing of your resume prose or cover letters. The server supplies structured evidence; your agent writes the words and you approve them.
 
@@ -284,7 +283,7 @@ See [docs/TOOLS.md](docs/TOOLS.md) for every tool, [docs/BATCH.md](docs/BATCH.md
 
 ### Can an AI agent apply to jobs for me?
 
-Yes. Connect this server to Claude, Cursor, Codex or another MCP client and the agent can find openings, fill the application and, once you approve the exact packet, submit it. In `assisted` mode it fills the form and you click submit; in `auto` mode it submits by itself, but only to companies you have allowlisted.
+Yes. Connect this server to Claude, Cursor, Codex or another MCP client and the agent can find openings, fill the application and, once you approve the exact packet, submit it. In `assisted` mode it fills the form and you click submit; in `auto` mode it submits by itself, under the approval you gave, and only to the companies in `submission.allowedCompanies` if you list any.
 
 ### Is this a LinkedIn Easy Apply bot?
 
@@ -300,11 +299,11 @@ On your machine, in `~/.autoapply`: your profile, resumes and a SQLite database.
 
 ### Does it write my cover letter or invent answers?
 
-No. Drafted answers come only from your profile and pre-approved answers. The server supplies structured evidence for a cover letter; your agent writes it and you approve it.
+It invents nothing. The server fills answers only from your profile and pre-approved answers. Your agent writes the cover letter and any essay question from the facts in your profile, cites them and avoids anything the posting asks for that you lack; you read every word in the packet you approve. Work authorization, sponsorship, salary and the other questions only you can answer are gathered into one message to you.
 
 ### Does it solve CAPTCHAs?
 
-No. A detected CAPTCHA stops the run and hands the application back to you.
+No. A detected CAPTCHA is shown to you in the filled browser window, with a notification, and the run carries on once you have solved it. If you don't within `captchaWaitSeconds` (three minutes by default), the application is handed back to you.
 
 ### Does it work for jobs in Europe or Spain?
 

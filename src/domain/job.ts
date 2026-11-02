@@ -88,7 +88,13 @@ export const ApplicationStatusSchema = z.enum([
 ]);
 export type ApplicationStatus = z.infer<typeof ApplicationStatusSchema>;
 
-export const AnswerSourceSchema = z.enum(["profile", "approved-answer", "human", "blocked"]);
+/**
+ * `agent` is what set_application_content writes: the model calls it, so an
+ * answer arriving there is the agent's, whatever it says the person told it.
+ * `human` is kept for answers the person gave through their own approval
+ * dialog or terminal, which is the only proof that they gave them.
+ */
+export const AnswerSourceSchema = z.enum(["profile", "approved-answer", "human", "agent", "blocked"]);
 
 export const DraftAnswerSchema = z.object({
   questionKey: z.string(),

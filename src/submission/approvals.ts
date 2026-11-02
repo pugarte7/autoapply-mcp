@@ -11,9 +11,11 @@ import {
 } from "../db/repositories/batches.js";
 import { appendEvent } from "../db/repositories/events.js";
 import { getJob } from "../db/repositories/jobs.js";
+import { getRules, markRulesApproved, proposeRules, type ApprovedVia } from "../db/repositories/rules.js";
 import { AppError } from "../util/errors.js";
 import { newId, nowIso } from "../util/hash.js";
 import { computePacketHash, renderPacketPreview, type SubmissionPacket } from "./packet.js";
+import { normalizeRules, rulesHash, rulesSummary } from "./standingRules.js";
 
 /**
  * The approval boundary's human half.
@@ -170,5 +172,50 @@ export function recordBatchApproval(batchId: string, manifestHash: string, expec
     batchId,
     approved,
     nextStep: `Run submit_batch for ${batchId}. Submission respects the campaign mode, daily limit and pacing.`,
+  };
+}
+
+/**
+ * Stores a rule set as proposed. A proposal authorises nothing: it exists so
+ * the person's own terminal can show the very rules the agent asked for, and
+ * the hash ties their yes to that content.
+ */
+export function proposeStandingRules(input: unknown) {
+  const workspace = getWorkspace();
+  const rules = normalizeRules(input);
+  const hash = rulesHash(rules);
+  const rulesId = newId("rules");
+  proposeRules(workspace.db, rulesId, rules, hash);
+  appendEvent(workspace.db, "rules.proposed", rulesId, { hash });
+  return { rulesId, hash, rules };
+}
+
+/** The proposal as the person sees it, refused if it is not the one previewed. */
+export function rulesQuestion(rulesId: string, hash: string): string {
+  const workspace = getWorkspace();
+  const record = getRules(workspace.db, rulesId);
+  if (!record) throw new AppError("rules_not_found", `no standing rules ${rulesId}`);
+  if (record.hash !== hash || rulesHash(record.rules) !== hash) {
+    throw new AppError("rules_hash_mismatch", `rules ${rulesId} do not match hash ${hash} (current: ${record.hash})`);
+  }
+  if (record.approvedAt) throw new AppError("rules_already_approved", `rules ${rulesId} were approved at ${record.approvedAt}`);
+  if (record.revokedAt) throw new AppError("rules_revoked", `rules ${rulesId} were revoked at ${record.revokedAt}`);
+  if (new Date(record.expiresAt).getTime() <= Date.now()) throw new AppError("rules_expired", `rules ${rulesId} expired at ${record.expiresAt}`);
+  return rulesSummary(record.rules, rulesId, hash, workspace.campaign);
+}
+
+/** Records the person's yes. Only the dialog and approve.js call this. */
+export function recordRulesApproval(rulesId: string, hash: string, via: ApprovedVia) {
+  rulesQuestion(rulesId, hash);
+  const workspace = getWorkspace();
+  markRulesApproved(workspace.db, rulesId, via);
+  appendEvent(workspace.db, "rules.approved", rulesId, { hash, via });
+  const record = getRules(workspace.db, rulesId)!;
+  return {
+    rulesId,
+    approvedAt: record.approvedAt,
+    approvedVia: via,
+    expiresAt: record.expiresAt,
+    nextStep: "Applications that match these rules can now be submitted without asking again. revoke_rules ends them.",
   };
 }

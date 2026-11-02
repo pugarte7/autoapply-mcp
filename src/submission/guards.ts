@@ -1,8 +1,9 @@
-import type { Campaign } from "../domain/campaign.js";
+import type { AtsKind, Campaign, SubmissionMode } from "../domain/campaign.js";
 import type { Application, Job } from "../domain/job.js";
 import type { ApprovalRecord } from "../db/repositories/applications.js";
 import { checkUrlAllowed } from "./allowlist.js";
 import { validateResumeFile } from "./resume.js";
+import { authoriseByRules, type StandingCheck } from "./standingRules.js";
 
 /**
  * The approval boundary.
@@ -11,6 +12,16 @@ import { validateResumeFile } from "./resume.js";
  * checks are deliberately conservative: refusing to submit is always recoverable,
  * sending a wrong or unapproved application is not.
  */
+
+/**
+ * Boards with discovery but no browser submission. They used to fall back to a
+ * packet for the person to send by hand; with that mode gone they are refused
+ * outright, before approval is even consulted, so the agent learns at once
+ * that the only route is the person applying and recording it. Apple's career
+ * site is listed because its walk was never written: without this the run
+ * would open a signed-in browser only to stop on the first page.
+ */
+const BROWSERLESS_ATS: ReadonlySet<AtsKind> = new Set(["smartrecruiters", "workable", "recruitee", "apple"]);
 
 export type GuardInput = {
   application: Application;
@@ -25,7 +36,13 @@ export type GuardInput = {
    */
   companyApplicationCount?: number;
   lastSubmissionAt: string | null;
-  requestedMode: "manual" | "assisted" | "auto";
+  requestedMode: SubmissionMode;
+  /**
+   * Standing rules the person approved, consulted only for an application
+   * with no approval of its own. A packet the person approved or rejected
+   * keeps that decision: the rules never overrule it.
+   */
+  standing?: StandingCheck;
   now?: Date;
 };
 
@@ -34,6 +51,10 @@ export type GuardResult = {
   code: string;
   reason: string;
   waitSeconds?: number;
+  /** Set when standing rules, not a per-packet approval, authorised this one. */
+  rulesId?: string;
+  /** The refusal lifts by itself later (a cap), so a run defers rather than fails. */
+  deferrable?: boolean;
 };
 
 function deny(code: string, reason: string, waitSeconds?: number): GuardResult {
@@ -49,24 +70,34 @@ export function checkSubmissionAllowed(input: GuardInput): GuardResult {
     return deny("already_submitted", `application was already submitted at ${application.submittedAt}`);
   }
 
-  const modeRank = { manual: 0, assisted: 1, auto: 2 } as const;
+  // Assisted is the lesser mode: a call may ask for it under an auto campaign
+  // (the person wants to watch, or press submit), never the other way round.
+  const modeRank = { assisted: 0, auto: 1 } as const;
   if (modeRank[requestedMode] > modeRank[policy.mode]) {
     return deny(
       "mode_not_permitted",
       `campaign submission mode is "${policy.mode}"; "${requestedMode}" submission is not permitted`,
     );
   }
-  if (requestedMode !== "manual" && ["smartrecruiters", "workable", "recruitee"].includes(job.ats)) {
+  if (BROWSERLESS_ATS.has(job.ats)) {
     return deny(
       "ats_browser_not_supported",
-      `${job.ats} supports discovery and manual packets only; browser submission has not been implemented`,
+      `${job.ats} postings cannot be submitted by the server; the person can apply at ${job.applyUrl} themselves, then call record_submission so counts and pacing stay right`,
     );
   }
 
-  if (!approval || approval.decision !== "approved") {
+  let rulesId: string | undefined;
+  if (!approval) {
+    const verdict = authoriseByRules(application, job, campaign, input.standing, now);
+    if (!verdict.allowed) {
+      return verdict.deferrable
+        ? { allowed: false, code: verdict.code, reason: verdict.reason, deferrable: true }
+        : deny(verdict.code, verdict.reason);
+    }
+    rulesId = verdict.rulesId;
+  } else if (approval.decision !== "approved") {
     return deny("not_approved", "no recorded human approval for this application");
-  }
-  if (approval.packetHash !== application.packetHash) {
+  } else if (approval.packetHash !== application.packetHash) {
     return deny(
       "packet_changed",
       "application content changed after approval; re-approve the current packet before submitting",
@@ -109,6 +140,8 @@ export function checkSubmissionAllowed(input: GuardInput): GuardResult {
     );
   }
 
+  // An empty list is no restriction: any company that passed the campaign's
+  // gates may be submitted to. Naming companies narrows auto mode to them.
   if (policy.allowedCompanies.length > 0 && requestedMode === "auto") {
     const permitted = policy.allowedCompanies.some(
       (name) => name.toLowerCase() === job.companyName.toLowerCase(),
@@ -142,7 +175,9 @@ export function checkSubmissionAllowed(input: GuardInput): GuardResult {
     }
   }
 
-  return { allowed: true, code: "ok", reason: "all submission guards passed" };
+  return rulesId
+    ? { allowed: true, code: "ok", reason: `all submission guards passed; authorised by standing rules ${rulesId}`, rulesId }
+    : { allowed: true, code: "ok", reason: "all submission guards passed" };
 }
 
 export function startOfDayIso(now = new Date()): string {

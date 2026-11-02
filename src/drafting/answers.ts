@@ -7,6 +7,7 @@ import { resolveNarrative, type NarrativeContext } from "./narrative.js";
 import { selectBestOption } from "./options.js";
 import { resolvePersonal } from "./personal.js";
 import { resolveExperience } from "./experience.js";
+import { resolveLanguage } from "./languages.js";
 import {
   CURRENT_RESIDENCE_QUESTION as SHARED_RESIDENCE_QUESTION,
   WORK_AUTHORITY_TEXT as SHARED_WORK_AUTHORITY_TEXT,
@@ -30,12 +31,15 @@ import { countsYearsAsLookback, statesUnrelatedExperience } from "./experienceSu
 import { ratingSubjectMismatch } from "./ratingSubject.js";
 import { consentsToDocument } from "./documentConsent.js";
 import { valueShapeMismatch, type TextControl } from "./valueShape.js";
+import { AGENT_DRAFT_GUIDANCE, AGENT_DRAFT_REASON } from "./answerOwner.js";
 
 /**
  * Answer policy engine.
  *
  * Answers may only come from verified profile data or a pre-approved answer.
- * Anything else is handed back for a human to decide. Nothing is invented here.
+ * Anything else is handed back: to the agent when the profile can answer it,
+ * to the person when it is theirs alone (see answerOwner.ts). Nothing is
+ * invented here.
  */
 
 export type FormQuestion = {
@@ -818,7 +822,7 @@ function answerOne(
   // Employment history: factual resume data, already used at fill time but
   // never consulted during drafting, so "What is your current or previous job
   // title?" blocked applications that the server could answer from the profile.
-  const experience = resolveExperience(asked.label, profile);
+  const experience = resolveExperience(asked.label, profile, context?.company);
   if (experience) {
     return {
       questionKey: question.key,
@@ -828,6 +832,20 @@ function answerOne(
       citation: experience.citation,
       requiresHuman: !experience.authorized,
       category: experience.category,
+      guidance: "",
+    };
+  }
+
+  const language = resolveLanguage(asked.label, profile, question.options);
+  if (language) {
+    return {
+      questionKey: question.key,
+      label: question.label,
+      answer: language.answer,
+      source: "profile",
+      citation: language.citation,
+      requiresHuman: false,
+      category: "language",
       guidance: "",
     };
   }
@@ -928,6 +946,9 @@ function answerOne(
         guidance: "",
       };
     }
+    // An essay with no authorised narrative stays out of auto-fill, but it is
+    // the agent's to write from the profile, not a decision for the person.
+    if (category === "essay") return agentDraftedEssay(question, approvedEarly?.note);
     // A stored entry for a blocked category still supplies a suggestion and
     // guidance, so the person deciding is not starting from a blank field.
     return blocked(
@@ -998,9 +1019,7 @@ function answerOne(
     }
   }
 
-  if (looksLikeEssay(question.label, question.type)) {
-    return blocked(question, "essay", "free-text response must be written and approved by a human");
-  }
+  if (looksLikeEssay(question.label, question.type)) return agentDraftedEssay(question);
 
   const soleConsent = soleConsentOption(question);
   if (soleConsent) {
@@ -1017,6 +1036,18 @@ function answerOne(
   }
 
   return blocked(question, category, "no verified profile value or pre-approved answer matches this question");
+}
+
+/**
+ * A free-text question nothing on file answers. It is still blocked: the
+ * engine writes no prose of its own, and an empty essay must not be submitted.
+ * But the person used to be asked to write every one of these, which is the
+ * single largest source of questions to them, when the agent already holds
+ * the match report it can write from. The block now says so, and the person
+ * reads the agent's draft in the packet they approve.
+ */
+function agentDraftedEssay(question: FormQuestion, note?: string): Omit<DraftAnswer, "required"> {
+  return blocked(question, "essay", AGENT_DRAFT_REASON, note ? `${note} ${AGENT_DRAFT_GUIDANCE}` : AGENT_DRAFT_GUIDANCE);
 }
 
 /**

@@ -11,7 +11,8 @@ import { sha256 } from "../../util/hash.js";
  * content that changed afterwards.
  */
 
-export type BatchItemState = "ready" | "needs_human" | "submitted" | "failed" | "skipped";
+/** `awaiting_code`: parked at a verification gate with its browser held, until provide_verification_code. */
+export type BatchItemState = "ready" | "needs_human" | "submitted" | "failed" | "skipped" | "awaiting_code";
 
 export type BatchItem = {
   batchId: string;

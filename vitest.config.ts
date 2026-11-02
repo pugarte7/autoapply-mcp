@@ -4,6 +4,9 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["test/**/*.test.ts"],
+    // Tests must never read or write the real login Keychain. Ones that cover
+    // the Keychain fallback inject a fake runner instead.
+    env: { AUTOAPPLY_ATS_KEYCHAIN: "off" },
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
