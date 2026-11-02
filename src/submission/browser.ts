@@ -255,6 +255,8 @@ export type BrowserRunOptions = {
 
 export type BrowserRunResult = {
   status: "prepared" | "submitted" | "aborted";
+  /** Set when the run stopped after clicking submit, so it must never be filled again automatically. */
+  submitClicked?: boolean;
   reason: string;
   filledFields: Array<{ label: string; source: string }>;
   unmatchedRequired: string[];
@@ -879,7 +881,9 @@ export async function runApplicationForm(packet: SubmissionPacket, options: Brow
 
   const headless = options.headless ?? false;
   const first = await runHostedForm(chromium, packet, options, headless);
-  const challenged = first.status === "aborted" && first.captchaDetected;
+  // A challenge raised by the submit click is not retried: the board may have
+  // taken that submission, and filling it again headed would send it twice.
+  const challenged = first.status === "aborted" && first.captchaDetected && !first.submitClicked;
   const display = (options.canShowBrowser ?? displayAvailable)();
   if (!retriesHeaded({ headless, challenged, retried: false, display })) return first;
   // The headless abort never reaches the caller, so the application is not
@@ -1441,7 +1445,8 @@ async function fillHostedForm(
       if (check === "clear") break;
       if (check === "blocked" || round >= POST_SUBMIT_HANDOFFS) {
         page.off?.("response", onResponse as (payload: never) => void);
-        return await gate.abort(page, filled, "anti-bot challenge activated after submit; this application must be completed by a human");
+        const stopped = await gate.abort(page, filled, "anti-bot challenge activated after submit; this application must be completed by a human");
+        return { ...stopped, submitClicked: true };
       }
       postSubmitText = await outcomeAfterHandoff(page);
     }

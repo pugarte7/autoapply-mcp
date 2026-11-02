@@ -182,15 +182,14 @@ Nothing is sent to an employer until you approve it. Once you have, the agent su
 | `AUTOAPPLY_OTP_IMAP_PASSWORD` | unset | App password for that mailbox; never stored in campaign files |
 | `AUTOAPPLY_ATS_PASSWORD` | unset | Password for the candidate accounts the server registers: always on Workday, and on any other board in `auto` mode once set |
 
-### Link a mailbox for verification codes
+### Verification codes
 
-Greenhouse emails a one-time code before it accepts a submission and Workday emails a link before a new candidate account can sign in. Both are bound to the attempt that requested them, so a run has to read them while the browser holds the gate open. Do this before your first submission:
+Some boards email a code (Greenhouse) or a link (Workday) before they accept an application, and it has to be typed in while the form is still open. The agent needs an email address that receives them, and there are two ways:
 
-1. Make a filter on your real address that forwards `from:(greenhouse OR workday.com OR myworkday.com)` to a mailbox that receives nothing else.
-2. Create an app password for that mailbox and set `AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD` in the MCP client's `env`.
-3. That is all: with the mailbox set, `submit_application` and `submit_batch` wait up to 300 seconds at a gate and read the code themselves. Pass `waitForCodeSeconds` to change the wait.
+- **Connect it to the agent.** An agent with its own mail access (a Gmail connector, for example) reads the code itself: the run returns `awaiting_code` with the browser held at the gate, and the agent calls `provide_verification_code`. Or connect the mailbox to the server over IMAP (`AUTOAPPLY_OTP_IMAP_USER` and `AUTOAPPLY_OTP_IMAP_PASSWORD`), and runs wait up to 300 seconds and read the code themselves.
+- **Pass the codes on by hand.** The agent asks you for the code when one arrives; the form waits for it.
 
-`doctor` reports whether the mailbox is configured. Without it, `submit_application` returns `awaiting_code` at the gate and keeps the browser parked there; an agent with its own mail access (a Gmail connector, for example) reads the code and calls `provide_verification_code`, or asks you for it once. Details in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
+`doctor` reports whether an IMAP mailbox is configured. Setup details, such as forwarding filters and app passwords, are in [docs/CONFIGURATION.md](docs/CONFIGURATION.md#verification-codes-environment-only).
 
 ## Use with Claude, Cursor, Codex and other MCP clients
 

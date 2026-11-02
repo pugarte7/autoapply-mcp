@@ -10,7 +10,7 @@ import { makeCampaign } from "./factories.js";
 const { launch } = vi.hoisted(() => ({ launch: vi.fn() }));
 vi.mock("playwright", () => ({ chromium: { launch } }));
 
-type Trigger = "upload" | "fill" | "screenshot" | "submit-inspection" | "never";
+type Trigger = "upload" | "fill" | "screenshot" | "submit-inspection" | "never" | "submit-click";
 type LocatorDouble = {
   first(): LocatorDouble;
   nth(index: number): LocatorDouble;
@@ -65,7 +65,10 @@ function browserDouble(trigger: Trigger, clearAfterPolls?: number) {
         events = [...events, "upload"];
         if (trigger === "upload") raise();
       },
-      click: async () => { events = [...events, "submit"]; },
+      click: async () => {
+        events = [...events, "submit"];
+        if (trigger === "submit-click") raise();
+      },
       innerText: async () => events.includes("submit") ? "Your application has been submitted." : "Submit your application",
       getAttribute: async (name) => {
         if (trigger === "submit-inspection" && name === "aria-disabled") raise();
@@ -290,6 +293,19 @@ describe("handing a CAPTCHA to the person", () => {
 
     expect(launch).toHaveBeenCalledTimes(2);
     expect(result).toMatchObject({ status: "aborted", captchaDetected: true, captchaHandedOff: true });
+  });
+
+  it("never refills headed after a challenge raised by the submit click, which could send it twice", async () => {
+    const fake = browserDouble("submit-click");
+    const { packet, directory } = packetFixture();
+
+    const result = await runApplicationForm(packet, {
+      submit: true, artifactsDir: directory, policy, headless: true, canShowBrowser: () => true, notifyPerson: vi.fn(),
+    });
+
+    expect(launch).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ status: "aborted", captchaDetected: true, submitClicked: true });
+    expect(fake.events.filter((event) => event === "submit")).toHaveLength(1);
   });
 
   it("keeps a headless run's abort when there is no display to show a browser on", async () => {

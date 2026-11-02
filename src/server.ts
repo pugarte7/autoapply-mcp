@@ -8,6 +8,7 @@ import { registerRulesTools } from "./tools/rules.js";
 import { registerTrackingTools } from "./tools/tracking.js";
 import { registerSourceSearchTools } from "./tools/sourceSearch.js";
 import { registerSetupTools } from "./tools/setup.js";
+import { registerHarness } from "./harness/index.js";
 
 export const SERVER_NAME = "autoapply-mcp";
 /**
@@ -24,20 +25,21 @@ const INSTRUCTIONS = `autoapply-mcp applies to jobs for a person from their veri
 and the person decides only what is theirs alone to decide.
 
 You do these yourself:
-  - Setup: build the profile and campaign from the CV and the onboarding answers (setup_profile and update_campaign
-    where available), then run node dist/cli/doctor.js --probe.
+  - Setup: build the profile and campaign from the CV and the onboarding answers (setup_profile and update_campaign;
+    onboarding_questions lists what is still missing), then run node dist/cli/doctor.js --probe.
   - Discovery: run discover_jobs, read list_queue and explain_job, and choose the openings that fit. Propose them; do
     not hand the person a list to pick from.
   - Drafting: write the cover letter and every question marked who=agent, essays included, from the match report's
     relevantFacts. Cite the fact ids, never claim anything in claimsToAvoid, and record it with set_application_content.
     The person reads it in the packet they approve.
   - Answering: anything the profile or CV supports is yours to answer. Store an answer that will recur with
-    remember_answer where available, so no later application asks it again.
+    remember_answer, so no later application asks it again.
   - Retrying: when a run ends needs_human with fieldsToAnswer, answer the who=agent fields from the profile and run it
     again. An unexpected required field is answered from the profile when it can be.
   - Verification codes: with the mailbox connected to the server, a run reads the code while it holds the form open
-    (waitForCodeSeconds defaults to 300 then). If you read the mail through your own connector, pass the code with
-    provide_verification_code where available, or write it to <artifacts>/<applicationId>.code while the run waits.
+    (waitForCodeSeconds defaults to 300 then). Without it, the run returns awaiting_code with the browser held at the
+    gate: read the newest email from the sender it names through your own mail connector and pass the code with
+    provide_verification_code. list_pending_gates shows what is waiting. Never submit a held application again.
   - Submitting: once approval is recorded, submit under it with submit_application or submit_batch.
 
 Ask the person only for:
@@ -46,12 +48,13 @@ Ask the person only for:
      send. Offer two options: connect that mailbox to the agent (its own mail connector or the server's IMAP inbox)
      so it does everything automatically, or the person passes the codes on by hand. Put every other question you
      have into this same message. The onboard prompt, where the client offers it, walks through it.
-  2. Approval, once, through the client's approval dialog: standing rules (approve_rules where available), a whole
+  2. Approval, once, through the client's approval dialog: standing rules (approve_rules), a whole
      batch (approve_batch) or one packet (approve_application). Calling these shows the person the dialog.
      The decision is theirs, never yours. If the client has no dialog, the tool names the command they run in their
      own terminal.
-  3. A CAPTCHA. The server never solves one: it keeps the window open for the person. Tell them, then run again once
-     they have completed it.
+  3. A CAPTCHA. The server never solves one: it brings the filled form to the front, notifies the person and waits
+     for them to solve it (captchaWaitSeconds, 3 minutes by default), then carries on and submits. Tell them it is
+     waiting. Only if it times out, run again once they say they are ready.
   4. Questions marked who=person with no standing answer: work authorization, sponsorship, citizenship, clearance,
      criminal history, compensation, demographics, veteran and disability status, and attestations that claim
      something about them. Gather them across every pending application into one message, never one at a time.
@@ -120,6 +123,7 @@ export function createServer(): McpServer {
   registerRulesTools(server);
   registerTrackingTools(server);
   registerSetupTools(server);
+  registerHarness(server);
 
   return server;
 }

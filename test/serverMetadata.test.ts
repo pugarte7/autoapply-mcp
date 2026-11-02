@@ -50,16 +50,15 @@ describe("server instructions", () => {
     expect(instructions).toContain("into one message, never one at a time");
   });
 
-  it("names the tools and prompts other modules add, as optional", () => {
-    for (const name of ["setup_profile", "update_campaign", "remember_answer", "provide_verification_code", "approve_rules", "onboard", "daily_apply"]) {
+  it("names the setup, memory, code, rules tools and the prompts", () => {
+    for (const name of ["setup_profile", "update_campaign", "onboarding_questions", "remember_answer", "provide_verification_code", "list_pending_gates", "approve_rules", "onboard", "daily_apply"]) {
       expect(instructions).toContain(name);
     }
-    expect(instructions).toContain("where available");
   });
 
   it("hands a CAPTCHA to the person instead of stopping the application", () => {
     expect(instructions).not.toMatch(/CAPTCHA or an unexpected form appears, stop/);
-    expect(instructions).toContain("keeps the window open");
+    expect(instructions.replace(/\s+/g, " ")).toContain("waits for them to solve it");
   });
 
   it("offers the two ways to get verification codes and no mode menu", () => {
