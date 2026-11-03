@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createServer, SERVER_NAME, SERVER_VERSION } from "../src/server.js";
+import { userAgent } from "../src/sources/http.js";
 
 /**
  * The server announced 0.2.0 while package.json said 0.1.0, so a client could
@@ -23,6 +24,13 @@ describe("server version", () => {
     expect(client.getServerVersion()).toMatchObject({ name: SERVER_NAME, version: pkg.version });
     await client.close();
     await server.close();
+  });
+
+  // spanishtoptechcompanies.com counts load_preset spain by this header; 0.3.2
+  // and earlier all said 0.1, so no release could be told from another.
+  it("is in the User-Agent every request sends", () => {
+    delete process.env.AUTOAPPLY_USER_AGENT;
+    expect(userAgent()).toContain(`autoapply-mcp/${pkg.version} (+https://github.com/pugarte7/autoapply-mcp;`);
   });
 });
 

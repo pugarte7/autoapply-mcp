@@ -1,6 +1,7 @@
 import { AppError } from "../util/errors.js";
 import { logger } from "../util/logger.js";
 import { fetchSourceResponse } from "./sourceRedirects.js";
+import { VERSION } from "../version.js";
 
 /**
  * Polite HTTP client for public ATS endpoints.
@@ -34,7 +35,7 @@ const lastRequestByHost = new Map<string, number>();
 export function userAgent(): string {
   return (
     process.env.AUTOAPPLY_USER_AGENT ??
-    "autoapply-mcp/0.1 (+https://github.com/autoapply-mcp; personal job-search client)"
+    `autoapply-mcp/${VERSION} (+https://github.com/pugarte7/autoapply-mcp; personal job-search client)`
   );
 }
 

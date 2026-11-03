@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerBatchTools } from "./tools/batch.js";
 import { registerDiscoveryTools } from "./tools/discovery.js";
@@ -9,17 +8,10 @@ import { registerTrackingTools } from "./tools/tracking.js";
 import { registerSourceSearchTools } from "./tools/sourceSearch.js";
 import { registerSetupTools } from "./tools/setup.js";
 import { registerHarness } from "./harness/index.js";
+import { VERSION } from "./version.js";
 
 export const SERVER_NAME = "autoapply-mcp";
-/**
- * Read from package.json rather than written out, because a hand-kept copy
- * drifted: the server announced 0.2.0 to clients while npm published 0.1.0.
- * The path resolves the same from src/ under vitest and from dist/ once built,
- * and package.json ships in the npm tarball beside dist/.
- */
-export const SERVER_VERSION: string = (
-  JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }
-).version;
+export const SERVER_VERSION: string = VERSION;
 
 const INSTRUCTIONS = `autoapply-mcp applies to jobs for a person from their verified profile. You do the work; the person
 decides only what is theirs to decide. The server finds, ranks and drafts. It never opens an employer's site: you send
