@@ -1,6 +1,6 @@
 {
   "name": "autoapply-mcp",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "AI job application agent: an MCP server that finds jobs on Greenhouse, Lever, Ashby and Workday and drafts every application, which your agent sends with its own browser after you approve.",
   "keywords": [
     "mcp",
