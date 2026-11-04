@@ -5,6 +5,9 @@
 [![Node.js 22.5+](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen.svg)](https://nodejs.org)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-server-8A2BE2.svg)](https://modelcontextprotocol.io)
 
+> [!IMPORTANT]
+> **Archived on 4 November 2026.** autoapply-mcp is no longer maintained. Applying moved to the MCP server of [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com), with nothing to install: connect `https://spanishtoptechcompanies.com/mcp` to your agent and use `find_jobs`, `job_questions` and `application_guide`. The job-board adapters now live in [spanish-top-tech-companies](https://github.com/pugarte7/spanish-top-tech-companies) under `lib/ats/`. Copies already installed keep working; to stop their anonymous technical usage data, set `AUTOAPPLY_TELEMETRY=0`.
+
 **autoapply-mcp** is an open-source [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that lets an AI agent such as Instinct, Claude Code, Cursor or Codex search for jobs and apply to them for you. It discovers postings on public Greenhouse, Lever, Ashby, Workday, SmartRecruiters, Workable and Recruitee boards, applies hard eligibility gates, ranks what survives with quotable evidence, and drafts only the answers your profile actually supports. Once you approve an application, your agent sends it with its own browser. Nothing goes out without your approval.
 
 There is nothing to install beyond one line in your MCP client: no browser to download, no mailbox to wire up. The server never opens an employer's site itself.
