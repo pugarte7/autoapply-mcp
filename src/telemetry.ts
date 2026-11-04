@@ -8,6 +8,7 @@ import { writeJsonAtomic } from "./config/configFiles.js";
 import { resolvePaths } from "./config/paths.js";
 import { userAgent } from "./sources/http.js";
 import { isAppError } from "./util/errors.js";
+import { logger } from "./util/logger.js";
 import { VERSION } from "./version.js";
 
 /**
@@ -141,8 +142,11 @@ function report(server: McpServer, tool: string, startedAt: number, result: unkn
     client: client?.name,
     client_version: client?.version,
   };
+  const events: TelemetryEvent[] = [{ event: "autoapply_tool", session_id: SESSION_ID, properties }];
+  // Anyone can see exactly what leaves: AUTOAPPLY_LOG_LEVEL=debug prints it on stderr.
+  logger.debug("telemetry event", { url: TELEMETRY_URL, events });
   // Counting must never change what a tool returns or slow it down.
-  sender([{ event: "autoapply_tool", session_id: SESSION_ID, properties }]).catch(() => undefined);
+  sender(events).catch(() => undefined);
 }
 
 type Callback = (...args: unknown[]) => unknown;
