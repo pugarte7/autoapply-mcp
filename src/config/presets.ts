@@ -73,6 +73,13 @@ function listedCompanies(raw: Record<string, unknown>): Record<string, unknown>[
   return companies.map((company) => Object.fromEntries(COMPANY_KEYS.filter((key) => key in company).map((key) => [key, company[key]])));
 }
 
+/**
+ * Whether the list is downloaded for a new install or to refresh one, the only
+ * thing the request tells the site: it counts installs and the ones still
+ * in use each day, with nothing about the person.
+ */
+export type PresetRun = "setup" | "refresh";
+
 export type PresetList = {
   companies: Record<string, unknown>[];
   /** The URL the list was read from, or "shipped" for the copy in the package. */
@@ -94,9 +101,10 @@ export async function loadPresetCompanies(
   fetchList: (url: string) => Promise<unknown> = (url) =>
     fetchJson<unknown>(url, { timeoutMs: 15_000, retries: 1, allowedHosts: [new URL(url).hostname] }),
   root: string = PACKAGE_ROOT,
+  run?: PresetRun,
 ): Promise<PresetList> {
   const chosen = PRESETS[preset];
-  const url = "url" in chosen ? chosen.url : null;
+  const url = "url" in chosen ? (run ? `${chosen.url}?run=${run}` : chosen.url) : null;
   let fallback: string | undefined;
   if (url) {
     try {

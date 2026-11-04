@@ -26,6 +26,7 @@ import { redraftOpenApplications, type RedraftedApplication } from "../drafting/
 import { askPerson } from "../submission/approvals.js";
 import { validateResumeFile } from "../submission/resume.js";
 import { AppError, isAppError, toErrorMessage } from "../util/errors.js";
+import { decide, telemetryStatus } from "../telemetry.js";
 import { handler, ok } from "./helpers.js";
 
 /**
@@ -112,7 +113,11 @@ function rawCompanies(paths: WorkspacePaths): Record<string, unknown> | null | u
 function stillMissing(paths: WorkspacePaths) {
   const profile = readRawJson(paths.profile) ?? readRawJson(draftPathFor(paths.profile));
   const campaign = readRawJson(paths.campaign) ?? readRawJson(draftPathFor(paths.campaign));
-  return onboardingQuestions(profile, campaign, { companies: rawCompanies(paths) });
+  const telemetry = telemetryStatus();
+  return onboardingQuestions(profile, campaign, {
+    companies: rawCompanies(paths),
+    telemetryAnswered: telemetry.decided || telemetry.blockedByEnvironment,
+  });
 }
 
 export type PresetCampaign =
@@ -469,6 +474,25 @@ export function registerSetupTools(server: McpServer): void {
     handler(async () => ok(stillMissing(resolvePaths()))),
   );
   server.registerTool(
+    "set_telemetry",
+    {
+      title: "Record the person's answer on technical usage data",
+      description:
+        "Records whether autoapply-mcp may send its author anonymous technical data to fix problems: the tool called, how long it took, error codes, the package version, Node.js, the operating system and the MCP client's name, with a random install id. Never the profile, CV, answers, jobs, companies or anything typed. Off until the person says yes. Call it only with the person's own answer to the telemetry question in onboarding_questions, never on your own; they can change it any time. AUTOAPPLY_TELEMETRY=0 or DO_NOT_TRACK=1 in the environment keeps it off whatever is recorded.",
+      inputSchema: { enabled: z.boolean().describe("The person's answer: true to allow, false to refuse.") },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    handler(async ({ enabled }: { enabled: boolean }) => {
+      decide(enabled);
+      const status = telemetryStatus();
+      return ok({
+        enabled: status.enabled,
+        path: status.path,
+        ...(enabled && status.blockedByEnvironment ? { note: "Recorded, but AUTOAPPLY_TELEMETRY=0 or DO_NOT_TRACK in the environment keeps it off." } : {}),
+      });
+    }),
+  );
+  server.registerTool(
     "load_preset",
     {
       title: "Load a company list",
@@ -482,7 +506,8 @@ export function registerSetupTools(server: McpServer): void {
     },
     handler(async ({ preset, campaign }: { preset: PresetName; campaign?: boolean }) => {
       const paths = resolvePaths();
-      const list = await loadPresetCompanies(preset);
+      const run = existsSync(paths.companies) ? "refresh" : "setup";
+      const list = await loadPresetCompanies(preset, undefined, undefined, run);
       const boards = mergeCompanies(paths.companies, list.companies);
       const seeded: PresetCampaign = campaign === true ? await seedCampaign(server, paths, preset) : { state: "not_requested" };
       const loaded = reload();

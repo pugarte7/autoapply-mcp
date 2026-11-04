@@ -154,7 +154,7 @@ WARN  campaign.json: "maxBatchSize" is ignored; it belongs at "submission.maxBat
 
 `presets/ai-security-us-canada.json` ships 135 company boards that were verified live against the ATS APIs, weighted toward AI, security and infrastructure companies in the US and Canada, alongside large-cap technology employers.
 
-`load_preset` with `spain` downloads the list [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com/api/v1/boards.json) publishes, tiered by that day's salaries, so companies the site adds reach you without a new release. The request carries nothing about you; its User-Agent names the package version, and the site counts these downloads by version and country, without your IP. `presets/spain.json` is the copy it falls back to when the site cannot be read, and the one `init` copies: 89 boards (37 Greenhouse, 18 Ashby, 13 Lever, 18 Workday and three others) of companies the salary site lists in Spain, each one publishing at least one posting in Spain or remote from Spain or Europe when it was built. `npm run preset:spain` rebuilds it.
+`load_preset` with `spain` downloads the list [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com/api/v1/boards.json) publishes, tiered by that day's salaries, so companies the site adds reach you without a new release. The request carries nothing about you: its User-Agent names the package version, a `run` parameter says whether it is a first setup or a refresh, and the site counts these downloads by version and country, without your IP. `presets/spain.json` is the copy it falls back to when the site cannot be read, and the one `init` copies: 89 boards (37 Greenhouse, 18 Ashby, 13 Lever, 18 Workday and three others) of companies the salary site lists in Spain, each one publishing at least one posting in Spain or remote from Spain or Europe when it was built. `npm run preset:spain` rebuilds it.
 
 Workday is fully supported for discovery, but applying on Workday means an account on that employer's tenant and a multi-step wizard, so expect your agent to need you more there than on a Greenhouse or Ashby posting.
 
@@ -191,6 +191,11 @@ Nothing is sent to an employer until you approve it. Listing companies in `submi
 | `AUTOAPPLY_MIN_INTERVAL_MS` | `700` | Minimum delay between requests to one host |
 | `AUTOAPPLY_MAX_RESPONSE_MB` | `64` | Response size ceiling |
 | `AUTOAPPLY_FOORILLA_API_KEY` | unset | Optional API key for an existing Foorilla PRO+ subscription; never stored in campaign files |
+| `AUTOAPPLY_TELEMETRY` | unset | `0` keeps technical usage data off whatever you answered; `DO_NOT_TRACK=1` does the same. See [Technical usage data](#technical-usage-data) |
+
+### Technical usage data
+
+Off until you say yes. The agent asks once, in its onboarding message, and records your answer with `set_telemetry`; you can change it any time. With it on, each tool call sends the author: the tool's name, whether it worked, how long it took, an error code, the package version, Node.js, the operating system and your MCP client's name, under a random install id kept in `~/.autoapply/telemetry.json`. `discover_jobs` adds how many boards it read and how many failed, by ATS and error code. Never your profile, CV, answers, the jobs or companies, or anything you type: a known error sends only its code, and an unexpected one its message with paths, addresses, links and numbers removed. It goes to [spanishtoptechcompanies.com](https://spanishtoptechcompanies.com/en/legal/), which keeps only those fields and forwards them to PostHog in the EU without your IP. `AUTOAPPLY_TELEMETRY=0` or `DO_NOT_TRACK=1` keeps it off. The code is [src/telemetry.ts](src/telemetry.ts).
 
 ## Typical session
 
@@ -251,7 +256,7 @@ It is designed not to. Postings that fail your location, seniority, salary or sp
 
 ### Where is my personal data stored?
 
-On your machine, in `~/.autoapply`: your profile, resumes and a SQLite database. Discovery needs no candidate data, and packets are only handed over for hosts the campaign allowlists. The AI client you connect sees whatever the tools return to it, as with any MCP server.
+On your machine, in `~/.autoapply`: your profile, resumes and a SQLite database. Discovery needs no candidate data, and packets are only handed over for hosts the campaign allowlists. Nothing about you is sent to the author; technical usage data, if you allow it, carries none of it (see [Technical usage data](#technical-usage-data)). The AI client you connect sees whatever the tools return to it, as with any MCP server.
 
 ### Does it write my cover letter or invent answers?
 

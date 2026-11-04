@@ -9,6 +9,7 @@ import { registerSourceSearchTools } from "./tools/sourceSearch.js";
 import { registerSetupTools } from "./tools/setup.js";
 import { registerHarness } from "./harness/index.js";
 import { VERSION } from "./version.js";
+import { instrument } from "./telemetry.js";
 
 export const SERVER_NAME = "autoapply-mcp";
 export const SERVER_VERSION: string = VERSION;
@@ -98,6 +99,7 @@ export function createServer(): McpServer {
     { instructions: INSTRUCTIONS, capabilities: { tools: {}, logging: {} } },
   );
 
+  instrument(server);
   registerDiscoveryTools(server);
   registerSourceSearchTools(server);
   registerDraftingTools(server);

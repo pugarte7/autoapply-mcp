@@ -81,12 +81,18 @@ function companiesFix(
 export type OnboardingInputs = {
   /** The raw companies file, null when it is missing. Left out, the company list is not checked. */
   companies?: Record<string, unknown> | null;
+  /** True once the person answered the telemetry question, or when the environment turned it off. */
+  telemetryAnswered?: boolean;
 };
+
+/** The telemetry question, word for word what the person is asked. */
+export const TELEMETRY_QUESTION =
+  "May autoapply-mcp send its author anonymous technical data, so problems can be fixed: which tools run, how long they take, error codes, the version, Node.js, the operating system and your agent's name? Never your profile, CV, answers, the jobs or companies, or anything you type. Yes or no; you can change it any time. Record the answer with set_telemetry.";
 
 export function onboardingQuestions(
   profile: Record<string, unknown> | null,
   campaign: Record<string, unknown> | null,
-  { companies }: OnboardingInputs = {},
+  { companies, telemetryAnswered = true }: OnboardingInputs = {},
 ): OnboardingReport {
   const p = profile ?? {};
   const c = campaign ?? {};
@@ -176,6 +182,8 @@ export function onboardingQuestions(
       optional: true,
     },
   ]);
+
+  group("This tool", [!telemetryAnswered && { field: "telemetry", question: TELEMETRY_QUESTION, optional: true }]);
 
   const unanswered = entries(p.answers).filter(
     (entry) => blank(entry.answer) && entry.skip !== true && entry.key !== CONSENT_KEY,

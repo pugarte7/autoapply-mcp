@@ -229,6 +229,7 @@ describe("MCP server", () => {
         "scan_source_page",
         "search_job_sources",
         "set_application_content",
+        "set_telemetry",
         "setup_profile",
         "submit_application",
         "submit_batch",

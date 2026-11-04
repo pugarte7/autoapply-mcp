@@ -1,5 +1,6 @@
 import { toErrorMessage } from "../util/errors.js";
 import { logger } from "../util/logger.js";
+import { noteFailure } from "../telemetry.js";
 
 /** Shared shapes for MCP tool responses. */
 
@@ -19,6 +20,7 @@ export function okText(text: string): ToolResponse {
 export function fail(error: unknown): ToolResponse {
   const message = toErrorMessage(error);
   logger.error("tool failed", { message });
+  noteFailure(error);
   return { content: [{ type: "text", text: message }], isError: true };
 }
 
