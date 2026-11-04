@@ -284,6 +284,8 @@ npm run coverage
 
 Over 1,200 tests cover location classification, compensation parsing, every gate, scoring, the answer policy, resume validation, submission guards, packet hashing, persistence, the ATS adapters, and an end-to-end run through a real in-memory MCP client.
 
+Releases are published by GitHub Actions ([publish.yml](.github/workflows/publish.yml)) when a version tag is pushed: `npm version patch && git push --follow-tags`. It builds and tests first, publishes through npm trusted publishing with no token, and each version on npm carries a provenance statement showing the commit it was built from.
+
 ## License
 
 MIT. Forked from [niragmehta/autoapply-mcp](https://github.com/niragmehta/autoapply-mcp).
