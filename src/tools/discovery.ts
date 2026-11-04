@@ -12,6 +12,7 @@ import { AtsKindSchema, CompanySchema, LocationClassSchema, type AtsKind } from 
 import { startOfDayIso } from "../submission/guards.js";
 import { prepareUntrusted, wrapUntrusted } from "../text/untrusted.js";
 import { AppError } from "../util/errors.js";
+import { noteDetails } from "../telemetry.js";
 import { handler, ok, okText } from "./helpers.js";
 
 /** Discovery, ranking and campaign reporting tools. */
@@ -58,6 +59,21 @@ export function registerDiscoveryTools(server: McpServer): void {
       appendEvent(workspace.db, "discovery.run", "campaign", {
         boards: discovery.boardsQueried,
         found: discovery.jobs.length,
+        accepted: summary.accepted,
+      });
+
+      // Technical counts only: how many boards answered and how the rest failed,
+      // by ATS and error code, never which companies.
+      const boardIssues: Record<string, number> = {};
+      for (const issue of discovery.issues) {
+        const key = `${issue.ats}:${issue.code}`;
+        boardIssues[key] = (boardIssues[key] ?? 0) + 1;
+      }
+      noteDetails({
+        boards: discovery.boardsQueried,
+        boards_failed: discovery.issues.length,
+        board_issues: boardIssues,
+        postings: discovery.jobs.length,
         accepted: summary.accepted,
       });
 
