@@ -11,15 +11,17 @@ import { isAppError } from "./util/errors.js";
 import { VERSION } from "./version.js";
 
 /**
- * Technical usage data, sent only after the person said yes (set_telemetry).
+ * Technical usage data, on by default and anonymous: the onboarding message
+ * tells the person, and a no (set_telemetry false) turns it off for good.
  *
  * The author learns which tools run, how long they take and how they fail, so
  * problems people hit can be fixed. Each event names the tool, the outcome, an
  * error code, versions, the operating system and the MCP client. Never the
  * profile, CV, answers, jobs, companies, file paths or anything typed: an error
  * message is only sent for unexpected exceptions, and with paths, addresses,
- * links and numbers removed. The install id is random, kept in telemetry.json,
- * and says nothing about who runs it.
+ * links and numbers removed. Events from one run share a random id that lives
+ * only in memory: nothing is stored on the person's machine unless they answer,
+ * and then only their answer.
  *
  * Events go to spanishtoptechcompanies.com, the author's site, which drops any
  * field it does not expect and forwards the rest without an IP address.
@@ -27,7 +29,10 @@ import { VERSION } from "./version.js";
 
 export const TELEMETRY_URL = "https://spanishtoptechcompanies.com/api/v1/telemetry";
 
-export type TelemetryDecision = { enabled: boolean; id: string; decidedAt: string };
+export type TelemetryDecision = { enabled: boolean; decidedAt: string };
+
+/** One run's id: new each time the server starts, never written anywhere. */
+const SESSION_ID = randomUUID();
 
 export function telemetryPath(): string {
   return join(resolvePaths().home, "telemetry.json");
@@ -36,16 +41,16 @@ export function telemetryPath(): string {
 export function readDecision(): TelemetryDecision | null {
   try {
     const raw = JSON.parse(readFileSync(telemetryPath(), "utf8")) as Partial<TelemetryDecision>;
-    if (typeof raw.enabled !== "boolean" || typeof raw.id !== "string") return null;
-    return { enabled: raw.enabled, id: raw.id, decidedAt: String(raw.decidedAt ?? "") };
+    if (typeof raw.enabled !== "boolean") return null;
+    return { enabled: raw.enabled, decidedAt: String(raw.decidedAt ?? "") };
   } catch {
     return null;
   }
 }
 
-/** Records the person's answer. The install id survives a change of mind. */
+/** Records the person's choice, the only thing ever written. */
 export function decide(enabled: boolean): TelemetryDecision {
-  const decision = { enabled, id: readDecision()?.id ?? randomUUID(), decidedAt: new Date().toISOString() };
+  const decision = { enabled, decidedAt: new Date().toISOString() };
   writeJsonAtomic(telemetryPath(), decision);
   return decision;
 }
@@ -60,7 +65,7 @@ export function blockedByEnvironment(): boolean {
 export function telemetryStatus(): { enabled: boolean; decided: boolean; blockedByEnvironment: boolean; path: string } {
   const decision = readDecision();
   const blocked = blockedByEnvironment();
-  return { enabled: !blocked && decision?.enabled === true, decided: decision !== null, blockedByEnvironment: blocked, path: telemetryPath() };
+  return { enabled: !blocked && decision?.enabled !== false, decided: decision !== null, blockedByEnvironment: blocked, path: telemetryPath() };
 }
 
 type Notes = { error?: unknown; details: Record<string, unknown> };
@@ -101,7 +106,7 @@ function failure(error: unknown, isError: boolean): { error_code?: string; error
   return { error_code: "thrown" };
 }
 
-export type TelemetryEvent = { event: "autoapply_tool"; install_id: string; properties: Record<string, unknown> };
+export type TelemetryEvent = { event: "autoapply_tool"; session_id: string; properties: Record<string, unknown> };
 type Sender = (events: TelemetryEvent[]) => Promise<void>;
 
 const post: Sender = async (events) => {
@@ -120,9 +125,7 @@ export function setTelemetrySender(next: Sender | null): void {
 }
 
 function report(server: McpServer, tool: string, startedAt: number, result: unknown, thrown: unknown, notes: Notes): void {
-  if (blockedByEnvironment()) return;
-  const decision = readDecision();
-  if (decision?.enabled !== true) return;
+  if (!telemetryStatus().enabled) return;
   const isError = thrown !== undefined || (result as { isError?: boolean } | undefined)?.isError === true;
   const client = server.server.getClientVersion();
   const properties = {
@@ -139,14 +142,14 @@ function report(server: McpServer, tool: string, startedAt: number, result: unkn
     client_version: client?.version,
   };
   // Counting must never change what a tool returns or slow it down.
-  sender([{ event: "autoapply_tool", install_id: decision.id, properties }]).catch(() => undefined);
+  sender([{ event: "autoapply_tool", session_id: SESSION_ID, properties }]).catch(() => undefined);
 }
 
 type Callback = (...args: unknown[]) => unknown;
 
 /**
  * Wraps every tool registered from here on, so each call is timed and reported
- * once it returns. Nothing is sent unless telemetry is on.
+ * once it returns. Nothing is sent once the person said no.
  */
 export function instrument(server: McpServer): void {
   const register = server.registerTool.bind(server) as (name: string, config: unknown, callback: Callback) => unknown;

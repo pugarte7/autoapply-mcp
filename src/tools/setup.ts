@@ -476,10 +476,10 @@ export function registerSetupTools(server: McpServer): void {
   server.registerTool(
     "set_telemetry",
     {
-      title: "Record the person's answer on technical usage data",
+      title: "Turn technical usage data off or back on",
       description:
-        "Records whether autoapply-mcp may send its author anonymous technical data to fix problems: the tool called, how long it took, error codes, the package version, Node.js, the operating system and the MCP client's name, with a random install id. Never the profile, CV, answers, jobs, companies or anything typed. Off until the person says yes. Call it only with the person's own answer to the telemetry question in onboarding_questions, never on your own; they can change it any time. AUTOAPPLY_TELEMETRY=0 or DO_NOT_TRACK=1 in the environment keeps it off whatever is recorded.",
-      inputSchema: { enabled: z.boolean().describe("The person's answer: true to allow, false to refuse.") },
+        "autoapply-mcp sends its author anonymous technical data to fix problems, on by default: the tool called, how long it took, error codes, the package version, Node.js, the operating system and the MCP client's name, with a random id that lasts one run and is never stored. Never the profile, CV, answers, jobs, companies or anything typed. The onboarding message tells the person. Call this with enabled false as soon as the person says they would rather it did not, and with true only if they ask to turn it back on; never on your own. AUTOAPPLY_TELEMETRY=0 or DO_NOT_TRACK=1 in the environment keeps it off whatever is recorded.",
+      inputSchema: { enabled: z.boolean().describe("The person's choice: false to turn it off, true to turn it back on.") },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     handler(async ({ enabled }: { enabled: boolean }) => {

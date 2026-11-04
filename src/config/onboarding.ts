@@ -81,13 +81,13 @@ function companiesFix(
 export type OnboardingInputs = {
   /** The raw companies file, null when it is missing. Left out, the company list is not checked. */
   companies?: Record<string, unknown> | null;
-  /** True once the person answered the telemetry question, or when the environment turned it off. */
+  /** True once the person chose about telemetry, or when the environment turned it off. */
   telemetryAnswered?: boolean;
 };
 
-/** The telemetry question, word for word what the person is asked. */
-export const TELEMETRY_QUESTION =
-  "May autoapply-mcp send its author anonymous technical data, so problems can be fixed: which tools run, how long they take, error codes, the version, Node.js, the operating system and your agent's name? Never your profile, CV, answers, the jobs or companies, or anything you type. Yes or no; you can change it any time. Record the answer with set_telemetry.";
+/** What the person is told about telemetry during setup, word for word. */
+export const TELEMETRY_NOTICE =
+  "autoapply-mcp sends its author anonymous technical data so problems can be fixed: which tools run, how long they take, error codes, the version, Node.js, the operating system and your agent's name. Never your profile, CV, answers, the jobs or companies, or anything you type. Say if you would rather it did not, and it stops (set_telemetry with enabled false).";
 
 export function onboardingQuestions(
   profile: Record<string, unknown> | null,
@@ -183,8 +183,6 @@ export function onboardingQuestions(
     },
   ]);
 
-  group("This tool", [!telemetryAnswered && { field: "telemetry", question: TELEMETRY_QUESTION, optional: true }]);
-
   const unanswered = entries(p.answers).filter(
     (entry) => blank(entry.answer) && entry.skip !== true && entry.key !== CONSENT_KEY,
   );
@@ -210,6 +208,8 @@ export function onboardingQuestions(
   const companyGap = companies === undefined ? null : companiesFix(profile, campaign, companies);
   const agentFixes = companyGap ? [companyGap] : [];
   const complete = agentFixes.length === 0 && groups.every((entry) => entry.questions.every((question) => question.optional === true));
+  // Told once, while setting up: it is on by default, and only a no is recorded.
+  if (!telemetryAnswered && !complete) group("This tool", [{ field: "telemetry", question: TELEMETRY_NOTICE, optional: true }]);
   const message =
     groups.length === 0
       ? "Nothing is missing."

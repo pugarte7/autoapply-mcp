@@ -67,7 +67,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 
 async function runOnce(model: Model, scenario: Scenario, run: number): Promise<Result> {
   const home = createWorkspace();
-  Object.assign(process.env, { AUTOAPPLY_HOME: home, AUTOAPPLY_MIN_INTERVAL_MS: "0", AUTOAPPLY_LOG_LEVEL: "error" });
+  Object.assign(process.env, { AUTOAPPLY_HOME: home, AUTOAPPLY_MIN_INTERVAL_MS: "0", AUTOAPPLY_LOG_LEVEL: "error", AUTOAPPLY_TELEMETRY: "0" });
   for (const key of ["AUTOAPPLY_PROFILE", "AUTOAPPLY_CAMPAIGN", "AUTOAPPLY_COMPANIES", "AUTOAPPLY_DB"]) delete process.env[key];
   resetWorkspaceCache();
   postingContent = scenario.postingContent;

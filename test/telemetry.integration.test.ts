@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -12,8 +12,9 @@ import { VERSION } from "../src/version.js";
 import { makeCampaign, makeProfile } from "./factories.js";
 
 /**
- * Technical usage data: off until the person says yes, never anything about
- * them, and never in the way of a tool. Every person here is fictional.
+ * Technical usage data: on by default, anonymous, off for good after a no,
+ * never anything about the person, and never in the way of a tool. Every
+ * person here is fictional.
  */
 
 let home = "";
@@ -57,38 +58,43 @@ afterEach(async () => {
   await client?.close();
   setTelemetrySender(null);
   for (const name of ENV) delete process.env[name];
+  process.env.AUTOAPPLY_TELEMETRY = "0"; // as vitest.config.ts sets it for every other test
   resetWorkspaceCache();
   if (home) rmSync(home, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 describe("telemetry", () => {
-  it("sends nothing until the person answers yes", async () => {
-    await call("onboarding_questions");
+  it("is on by default, stores nothing, and a no turns it off for good", async () => {
+    await call("list_queue");
+    await settle();
+    expect(sent.map((event) => event.properties.tool)).toEqual(["list_queue"]);
+    expect(existsSync(join(home, "telemetry.json"))).toBe(false);
     await call("set_telemetry", { enabled: false });
     await call("list_queue");
     await settle();
-    expect(sent).toEqual([]);
-    expect(JSON.parse(readFileSync(join(home, "telemetry.json"), "utf8"))).toMatchObject({ enabled: false });
+    expect(sent.map((event) => event.properties.tool)).toEqual(["list_queue"]);
+    expect(JSON.parse(readFileSync(join(home, "telemetry.json"), "utf8"))).toEqual({ enabled: false, decidedAt: expect.any(String) });
   });
 
-  it("asks once in onboarding, as an optional question, until it is answered", async () => {
+  it("tells the person during setup, as a notice they can say no to, until they choose", async () => {
     const before = (await call("onboarding_questions")).json();
     const asked = before.groups.flatMap((group: any) => group.questions);
     expect(asked).toContainEqual(expect.objectContaining({ field: "telemetry", optional: true }));
-    expect(before.message).toMatch(/This tool\n- May autoapply-mcp send its author anonymous technical data/);
-    await call("set_telemetry", { enabled: true });
+    expect(before.message).toMatch(/This tool\n- autoapply-mcp sends its author anonymous technical data[^\n]*Say if you would rather it did not/);
+    expect(before.complete).toBe(false);
+    await call("set_telemetry", { enabled: false });
     const after = (await call("onboarding_questions")).json();
     expect(after.groups.flatMap((group: any) => group.questions).map((entry: any) => entry.field)).not.toContain("telemetry");
   });
 
-  it("after a yes, reports each tool with technical fields only", async () => {
-    await call("set_telemetry", { enabled: true });
+  it("reports each tool with technical fields only, under an id that lasts one run", async () => {
+    await call("onboarding_questions");
     await call("list_queue");
     await settle();
-    expect(sent.map((event) => event.properties.tool)).toEqual(["set_telemetry", "list_queue"]);
+    expect(sent.map((event) => event.properties.tool)).toEqual(["onboarding_questions", "list_queue"]);
     const [, queue] = sent;
     expect(queue!.event).toBe("autoapply_tool");
-    expect(queue!.install_id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(queue!.session_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(queue!.properties).toMatchObject({
       tool: "list_queue", ok: true, version: VERSION, node: process.versions.node,
       client: "test-client", client_version: "1.2.3",
@@ -96,14 +102,13 @@ describe("telemetry", () => {
     expect(Object.keys(queue!.properties).sort()).toEqual(
       ["arch", "client", "client_version", "duration_ms", "node", "ok", "os", "tool", "version"],
     );
-    // The same id on every event, and on the next run.
-    expect(new Set(sent.map((event) => event.install_id)).size).toBe(1);
+    expect(new Set(sent.map((event) => event.session_id)).size).toBe(1);
+    expect(existsSync(join(home, "telemetry.json"))).toBe(false);
     const profile = readFileSync(join(home, "profile.json"), "utf8");
     expect(JSON.stringify(sent)).not.toContain(JSON.parse(profile).identity.email);
   });
 
   it("a known failure carries its code, never its message", async () => {
-    await call("set_telemetry", { enabled: true });
     const failed = await call("discover_jobs");
     await settle();
     expect(failed.isError).toBe(true);
@@ -113,7 +118,6 @@ describe("telemetry", () => {
   });
 
   it("the environment keeps it off whatever was answered", async () => {
-    await call("set_telemetry", { enabled: true });
     process.env.DO_NOT_TRACK = "1";
     const status = (await call("set_telemetry", { enabled: true })).json();
     await call("list_queue");
@@ -122,11 +126,10 @@ describe("telemetry", () => {
     await call("list_queue");
     await settle();
     expect(status).toMatchObject({ enabled: false, note: expect.stringMatching(/keeps it off/) });
-    expect(sent.map((event) => event.properties.tool)).toEqual(["set_telemetry"]);
+    expect(sent).toEqual([]);
   });
 
   it("a sender that fails never reaches the tool", async () => {
-    await call("set_telemetry", { enabled: true });
     setTelemetrySender(async () => {
       throw new Error("offline");
     });
