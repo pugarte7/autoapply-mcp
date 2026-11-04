@@ -1,0 +1,39 @@
+# Publishes to npm when a version tag is pushed (npm version patch && git push --follow-tags).
+#
+# No npm token: npm trusted publishing lets this workflow, and only this one,
+# publish autoapply-mcp through GitHub's OIDC, and every version it publishes
+# carries a provenance statement linking it to this repository and commit.
+# Set up once on npmjs.com: autoapply-mcp > Settings > Trusted Publisher >
+# GitHub Actions, owner pugarte7, repository autoapply-mcp, workflow publish.yml.
+name: Publish to npm
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # OIDC for trusted publishing and provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm 11.5.1 or newer; Node 22 ships npm 10.
+      - name: Update npm
+        run: npm install --global npm@11
+
+      - run: npm ci
+
+      - name: The tag names the version in package.json
+        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
+
+      # prepublishOnly builds a clean dist/ and runs the tests first.
+      - run: npm publish --provenance --access public
